@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from html import escape
 from pathlib import Path
 from string import Template
@@ -111,7 +112,7 @@ def article_card(reading: Reading, index: int, track: str, base: str) -> str:
 
 
 def render_study(*, items: Sequence[News], today_items: Sequence[News], track: str, topic: str,
-                 page: int, base: str, total: int, now, source: str | None = None) -> str:
+                 page: int, base: str, total: int, now: datetime, source: str | None = None) -> str:
     pool = list(today_items)
     fallback = not pool
     if not pool and items:

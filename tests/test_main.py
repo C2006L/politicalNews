@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
@@ -67,8 +68,8 @@ def test_search_page_supports_year_only_filter(client):
 
 def test_search_defaults_to_current_year(client):
     """测试搜索框默认选中当前年份"""
-    current_year = datetime.now(timezone.utc).year
-    response = client.get("/")
+    current_year = datetime.now(ZoneInfo("Asia/Shanghai")).year
+    response = client.get("/search")
     assert response.status_code == 200
     assert f"<option value='{current_year}' selected>" in response.text
 
@@ -103,7 +104,8 @@ def test_today_and_yesterday_pages(client):
     """测试今日和昨日独立页面"""
     today_response = client.get("/today")
     assert today_response.status_code == 200
-    assert "今日时政" in today_response.text
+    assert "今日时政" in today_response.text or "近期时政" in today_response.text
+    assert 'id="reading"' in today_response.text
 
     yesterday_response = client.get("/yesterday")
     assert yesterday_response.status_code == 200
