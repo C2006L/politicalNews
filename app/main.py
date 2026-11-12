@@ -3,20 +3,20 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import init_db
 from app.news_data import count_news_records
 from app.routers import news_api, sync_routes, web
 from app.sync_service import (
-    has_recent_two_years_data,
     reset_stale_sync_state,
     start_background_sync,
-    start_batched_backfill,
 )
 from app.tasks import setup_scheduler
 
@@ -34,17 +34,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     db_is_empty = count_news_records() == 0
-    should_bootstrap = db_is_empty or (
-        settings.bootstrap_recent_news_on_startup and not has_recent_two_years_data(months=24)
-    )
+    should_bootstrap = db_is_empty and settings.bootstrap_recent_news_on_startup
 
     if should_bootstrap:
-        scope = "启动初始化分批回填"
-        started = start_batched_backfill(scope, total_months=24, batch_size=2, max_items=300)
+        scope = "启动近期新闻初始化"
+        started = start_background_sync(scope, months=1, max_pages=2, max_items=40)
         if started:
-            logger.info("Startup batched backfill started in background.")
+            logger.info("Startup recent news sync started in background; historical backfill is available manually.")
         else:
-            logger.info("Startup batched backfill skipped because another sync task is running.")
+            logger.info("Startup recent news sync skipped because another sync task is running.")
     elif settings.auto_sync_on_startup:
         scope = "启动快速同步"
         started = start_background_sync(scope, months=1, max_pages=40, max_items=240)
@@ -53,7 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else:
             logger.info("Startup quick sync skipped because another sync task is running.")
     else:
-        logger.info("Startup auto sync is disabled and cached coverage looks sufficient.")
+        logger.info("Startup auto sync is disabled; serving cached news.")
     yield
     scheduler.shutdown(wait=False)
 
@@ -77,6 +75,7 @@ def create_app() -> FastAPI:
     application.include_router(web.router)
     application.include_router(news_api.router)
     application.include_router(sync_routes.router)
+    application.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
     return application
 
 

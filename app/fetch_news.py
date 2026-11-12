@@ -102,6 +102,7 @@ CURATED_HTML_SOURCES: List[Dict[str, Any]] = [
         "source": "people_cn",
         "category": "时政",
         "list_urls": _people_archive_urls(40),
+        "stop_after_missing_pages": 3,
         "base_url": "https://politics.people.com.cn/",
         "link_keywords": ("/n1/",),
         "article_patterns": (".html", "/n1/"),
@@ -304,6 +305,10 @@ def _fetch_url(url: str) -> str:
                 return cast(str, response.read().decode("utf-8", errors="ignore"))
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             last_error = exc
+            # 永久性客户端错误重试也不会恢复；仅保留超时和限流的重试。
+            if isinstance(exc, HTTPError) and 400 <= exc.code < 500 and exc.code not in {408, 429}:
+                logger.warning("Skipping HTTP %s for %s", exc.code, url)
+                raise
             if attempt >= HTTP_RETRIES:
                 logger.warning("Failed to fetch %s after %d attempts: %s", url, attempt + 1, exc)
                 raise
@@ -705,14 +710,24 @@ def _load_external_html_sources(progress_callback: Callable[[Dict[str, Any]], No
     for source_config in CURATED_HTML_SOURCES:
         source_items: List[Dict[str, Any]] = []
         errors = 0
+        consecutive_missing = 0
         for list_url in source_config.get("list_urls", []):
             try:
                 html_text = _fetch_url(list_url)
+                consecutive_missing = 0
                 parsed_items = _parse_generic_list_page(html_text, list_url, source_config)
                 source_items.extend(parsed_items)
             except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
                 errors += 1
                 logger.warning("Failed to load source page %s: %s", list_url, exc)
+                if isinstance(exc, HTTPError) and exc.code in {404, 410}:
+                    consecutive_missing += 1
+                else:
+                    consecutive_missing = 0
+                missing_limit = source_config.get("stop_after_missing_pages")
+                if missing_limit and consecutive_missing >= missing_limit:
+                    logger.warning("Stopping %s archive after %d consecutive missing pages", source_config["source"], consecutive_missing)
+                    break
 
         deduped: List[Dict[str, Any]] = []
         seen_links: set[str] = set()

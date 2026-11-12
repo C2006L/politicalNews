@@ -10,13 +10,12 @@ def test_home_page(client):
     """测试首页访问"""
     response = client.get("/")
     assert response.status_code == 200
-    assert "今日时政" in response.text
-    assert "只保留今日时政主列表和必要筛选" in response.text
+    assert "每日时政" in response.text
+    assert "时政自习室" in response.text
+    assert "考研政治" in response.text
+    assert "公考常识" in response.text
     assert "同步状态" in response.text
-    assert (
-        "只显示数据库里日期为今天的内容" in response.text
-        or "首页已自动回退展示数据库里的最近更新" in response.text
-    )
+    assert "同日同标题稿件合并展示" in response.text
 
 
 def test_latest_page_alias(client):

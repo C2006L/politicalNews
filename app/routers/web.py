@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
 from app.models import News
+from app.study import render_study
 
 # 子路径部署前缀（如 /news），由环境变量 BASE_PATH 提供
 BASE_PATH = get_settings().base_path
@@ -1351,56 +1352,17 @@ async def latest_page(
 async def today_page(
     page: int = Query(default=1, ge=1),
     source: Optional[str] = Query(default=None),
+    track: str = Query(default="all", pattern="^(all|postgrad|civil|essay)$"),
+    topic: str = Query(default="all", pattern="^(all|policy|economy|science|world|theory|other)$"),
 ) -> HTMLResponse:
-    current_year = datetime.now(LOCAL_TZ).year
     all_recent_items, _ = query_news(year=None, search=None, months=24)
-    source_counts = _source_counts(all_recent_items)
-    filtered_recent_items = _filter_items_by_source(all_recent_items, source)
-    items, title = today_news(filtered_recent_items, limit=None)
-    display_items = items or filtered_recent_items
-    display_title = title if items else "今日暂无更新，已显示最近时政"
-    display_subtitle = (
-        "只显示数据库里日期为今天的内容，作为门户首页的主时间线。"
-        if items
-        else "当前还没有归档为今天的内容，首页已自动回退展示数据库里的最近更新。"
-    )
-    page_items, current_page, total_pages = _paginate_sequence(display_items, page, ITEMS_PER_PAGE)
-    year_counts = get_year_counts(min_year=MIN_FILTER_YEAR)
-
-    main_html = (
-        "<section class='panel'>"
-        f"<div class='panel-head'><div><h2>{escape(display_title)}</h2><div class='panel-subtitle'>{escape(display_subtitle)}</div></div><span>{len(display_items)} 条</span></div>"
-        + _render_scroll_shell(_render_news_stream(page_items, "数据库里还没有可展示的内容。"))
-        + _render_pager("/today", current_page, total_pages, source=source)
-        + "</section>"
-    )
-
-    return _render_layout(
-        active_tab="today",
-        hero_title="今日时政",
-        hero_text="首页只保留今日时政主列表和必要筛选。专题、来源、同步状态都回到各自独立页面，减少重复入口。",
-        stats=[
-            ("今日条数", str(len(items))),
-            ("数据库总条数", str(count_news_records())),
-            ("年份覆盖", f"{min(_visible_years(year_counts, current_year), default=current_year)}-{current_year}"),
-            ("当前来源", source_label(source) if source else "全部来源"),
-        ],
-        main_html=main_html,
-        side_html=_shared_sidebar(
-            year_counts,
-            current_year,
-            all_recent_items,
-            source_counts,
-            "/today",
-            active_source=source,
-        ),
-        year_counts=year_counts,
-        source_counts=source_counts,
-        current_year=current_year,
-        selected_year=current_year,
-        selected_source=source,
-        page_title="今日时政",
-    )
+    filtered = _filter_items_by_source(all_recent_items, source)
+    items, _ = today_news(filtered, limit=None)
+    return HTMLResponse(render_study(
+        items=filtered, today_items=items, track=track, topic=topic,
+        page=page, base=BASE_PATH, total=count_news_records(),
+        now=datetime.now(LOCAL_TZ), source=source,
+    ))
 
 
 @router.get("/yesterday", response_class=HTMLResponse)
