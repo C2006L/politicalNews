@@ -11,10 +11,14 @@ def append_revision(db: Session, material: LearningMaterial, html: str | None = 
     db.flush()
     previous = db.query(func.max(MaterialRevision.revision)).filter_by(material_id=material.id).scalar() or 0
     number = previous + 1
-    db.add(MaterialRevision(material_id=material.id, revision=number,
+    revision = MaterialRevision(material_id=material.id, revision=number,
                             snapshot={"title": material.title, "account": material.account,
                                       "url": material.url, "fingerprint": material.fingerprint,
                                       "payload": deepcopy(material.payload),
                                       "imported_at": material.imported_at.isoformat() + "Z"},
-                            source_html=html, origin="import" if html is not None else "legacy_snapshot"))
+                            source_html=html, origin="import" if html is not None else "legacy_snapshot")
+    db.add(revision)
+    db.flush()
+    from app.knowledge import link_revision
+    link_revision(db, revision)
     return int(number)

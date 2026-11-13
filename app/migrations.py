@@ -5,7 +5,7 @@ from sqlalchemy import Engine, text, select
 
 from app.models import Base
 
-LATEST_VERSION = 2
+LATEST_VERSION = 3
 
 
 def migrate(engine: Engine) -> None:
@@ -16,7 +16,7 @@ def migrate(engine: Engine) -> None:
         try:
             conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)")
             applied = {row[0] for row in conn.execute(text("SELECT version FROM schema_migrations"))}
-            if applied - {1, 2}:
+            if applied - set(range(1, LATEST_VERSION + 1)):
                 raise ValueError("Database schema is newer than this application; restore the matching application version")
             if 1 not in applied:
                 for name in ("news", "app_state", "learning_materials"):
@@ -32,6 +32,10 @@ def migrate(engine: Engine) -> None:
                         material_id=row["id"], revision=1, snapshot=snapshot,
                         source_html=None, origin="legacy_snapshot"))
                 conn.execute(text("INSERT INTO schema_migrations VALUES (2,:at)"), {"at": datetime.now(timezone.utc).isoformat()})
+            if 3 not in applied:
+                for name in ("knowledge_points", "knowledge_links"):
+                    Base.metadata.tables[name].create(conn, checkfirst=True)
+                conn.execute(text("INSERT INTO schema_migrations VALUES (3,:at)"), {"at": datetime.now(timezone.utc).isoformat()})
             conn.commit()
         except Exception:
             conn.rollback()

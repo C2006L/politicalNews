@@ -56,3 +56,23 @@ class MaterialRevision(Base):
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     source_html: Mapped[str | None] = mapped_column(Text, nullable=True)
     origin: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class KnowledgePoint(Base):
+    __tablename__ = "knowledge_points"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    subject: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class KnowledgeLink(Base):
+    __tablename__ = "knowledge_links"
+    __table_args__ = (UniqueConstraint("point_id", "revision_id", "kind", "item_index"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    point_id: Mapped[str] = mapped_column(ForeignKey("knowledge_points.id"), index=True)
+    revision_id: Mapped[int] = mapped_column(ForeignKey("material_revisions.id"), index=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    item_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="candidate", nullable=False)
+    method: Mapped[str] = mapped_column(String, nullable=False)

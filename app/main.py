@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.database import init_db
 from app.news_data import count_news_records
-from app.routers import news_api, sync_routes, web, learning
+from app.routers import news_api, sync_routes, web, learning, knowledge
 from app.sync_service import (
     reset_stale_sync_state,
     start_background_sync,
@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    from app.knowledge import rebuild_links
+    rebuild_links()
     from app.material_status import recover_import
     recover_import()
     reset_stale_sync_state()
@@ -82,6 +84,7 @@ def create_app() -> FastAPI:
     application.include_router(news_api.router)
     application.include_router(sync_routes.router)
     application.include_router(learning.router)
+    application.include_router(knowledge.router)
     application.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
     return application
 

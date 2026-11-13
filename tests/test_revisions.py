@@ -29,7 +29,7 @@ def test_legacy_database_upgrade_and_restore(tmp_path):
         with engine.connect() as conn:
             assert conn.execute(text('select count(*) from material_revisions')).scalar() == 1
             assert conn.execute(text('select material_id from material_revisions')).scalar() == 42
-            assert conn.execute(text('select max(version) from schema_migrations')).scalar() == 2
+            assert conn.execute(text('select max(version) from schema_migrations')).scalar() == 3
         backup(tmp_path / 'before.db', tmp_path / 'restored.db')
         restored = create_engine('sqlite:///' + (tmp_path / 'restored.db').as_posix())
         try:
@@ -53,7 +53,7 @@ def test_newer_schema_is_rejected_without_modification(tmp_path):
         with pytest.raises(ValueError, match='newer'):
             migrate(engine)
         with engine.connect() as conn:
-            assert conn.execute(text('select count(*) from schema_migrations')).scalar() == 3
+            assert conn.execute(text('select count(*) from schema_migrations')).scalar() == 4
     finally:
         engine.dispose()
 

@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.materials import sync_materials
 from app.material_status import pipeline_status
+from app.knowledge import material_points
 from app.models import LearningMaterial, MaterialRevision
 
 router = APIRouter(tags=["公众号研读"])
@@ -109,6 +110,7 @@ def learning_page(account: str | None = None, page: int = Query(1, ge=1)) -> HTM
     data = list_materials(account, page)
     base = escape(get_settings().base_path, quote=True)
     body = '<div class="eyebrow">THE STUDY NOTES</div><h1>公众号研读</h1><p class="learning-notice">考点摘录与自测问答 · 规则整理，尚未人工审核；保留原文出处。</p>'
+    body += f'<p><a href="{base}/knowledge">按考点研读 →</a></p>'
     for m in data["items"]:
         body += f'''<article class="learning-entry"><div class="meta">{escape(m['account'])}</div>
 <h2><a href="{base}/learning/{m['id']}">{escape(m['title'])}</a></h2>
@@ -128,6 +130,10 @@ def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) 
     m = find_material(material_id, revision)
     base = escape(get_settings().base_path, quote=True)
     body = f'<a href="{base}/learning">← 公众号研读</a><p class="eyebrow">{escape(m["account"])}</p><h1>{escape(m["title"])}</h1>'
+    related = material_points(material_id, m.get('revision'))
+    if related:
+        body += '<p>关联考点：' + ' · '.join(
+            f'<a href="{base}/knowledge/{p["id"]}">{escape(p["title"])}</a>' for p in related) + '</p>'
     versions = material_history(material_id)["items"]
     if versions:
         body += f'<p class="learning-notice">当前查看版本 {m["revision"]} · '
