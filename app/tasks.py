@@ -9,9 +9,8 @@ def setup_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone=settings.scheduled_sync_timezone)
     scheduler.add_job(
         "app.sync_service:run_scheduled_sync",
-        "cron",
-        hour=f"*/{settings.scheduled_sync_interval_hours}",
-        minute=0,
+        "interval",
+        hours=settings.scheduled_sync_interval_hours,
         kwargs={"months": 1, "max_pages": 24, "max_items": 180},
         id="hourly_news_sync",
         max_instances=1,
@@ -19,4 +18,7 @@ def setup_scheduler() -> BackgroundScheduler:
         misfire_grace_time=600,
         replace_existing=True,
     )
+    if settings.werss_database_path:
+        scheduler.add_job("app.materials:sync_materials", "interval", minutes=15,
+                          id="werss_materials_import", max_instances=1, coalesce=True)
     return scheduler

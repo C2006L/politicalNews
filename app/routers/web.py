@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.config import get_settings
 from app.models import News
 from app.study import render_study
+from app.chrome import header, collection, bookmark
 
 # 子路径部署前缀（如 /news），由环境变量 BASE_PATH 提供
 BASE_PATH = get_settings().base_path
@@ -176,6 +177,7 @@ def _render_news_card(item: News, keyword: Optional[str] = None) -> str:
         f"<p>{excerpt}</p>"
         "<div class='card-actions'>"
         f"<a class='inline-link' href='{BASE_PATH}/news/{item.id}'>站内阅读</a>"
+        f"{bookmark(str(item.id), item.title, f'{BASE_PATH}/news/{item.id}', item.published_at.strftime('%Y-%m-%d'))}"
         f"<a class='inline-link' href='{link}' target='_blank' rel='noreferrer'>原站原文</a>"
         "</div>"
         "</article>"
@@ -423,6 +425,37 @@ def _render_sync_panel(task_status: Dict[str, object], last_sync_at: str, last_s
     """
 
 
+def _render_learning_status() -> str:
+    from app.material_status import pipeline_status
+    data = pipeline_status()
+    imported = data["import"]
+    acquired = data["acquisition"]
+    labels = {"not_run": "尚未导入", "running": "导入中", "interrupted": "上次导入中断",
+              "failed": "导入失败", "partial": "部分正文被拒绝", "updated": "已导入新内容",
+              "no_new_materials": "本次无新增资料"}
+    def display_time(value: object) -> str:
+        if not value:
+            return "暂无记录"
+        try:
+            return datetime.fromisoformat(str(value)).astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S 北京时间")
+        except ValueError:
+            return "时间未确认"
+    source_label_text = {"unknown": "采集实时状态未确认", "not_configured": "未配置资料源",
+                         "source_unavailable": "资料源暂不可读"}.get(acquired["state"], "未确认")
+    counts = imported.get("result", {})
+    account_rows = ''.join(
+        f'<div class="sync-item"><strong>{escape(a["name"])}</strong><span>已存 {a["articles"]} 篇 · 有文字 {a["with_text"]} 篇 · 待取正文 {a["awaiting_text"]} 篇</span></div>'
+        for a in acquired["accounts"])
+    return f'''<section class="panel" id="learning-pipeline"><h2>公众号采集与资料整理</h2>
+<div class="sync-grid"><div class="sync-item"><strong>上游采集</strong><span>{source_label_text}</span></div>
+<div class="sync-item"><strong>主项目导入</strong><span>{labels.get(imported["state"], "未知")}</span></div>
+<div class="sync-item"><strong>最近导入检查</strong><span>{display_time(imported.get("finished_at"))}</span></div>
+<div class="sync-item"><strong>最近成功检查</strong><span>{display_time(imported.get("last_success_at"))}</span></div>
+<div class="sync-item"><strong>最近新增或更正</strong><span>{display_time(imported.get("last_changed_at"))}</span></div>{account_rows}</div><p class="notice">采集通道目前仅保证尝试获取最新一篇，多篇更新和历史文章可能缺失。库文件可读不能证明授权有效，导入无新增不能证明公众号没有更新。</p>
+<p class="panel-subtitle">本次新增 {counts.get("added", 0)} · 更新 {counts.get("updated", 0)} · 跳过 {counts.get("skipped", 0)} · 拒绝 {counts.get("rejected", 0)}（验证页 {counts.get("verification_required", 0)}，正文不足 {counts.get("insufficient_text", 0)}）</p>
+<p class="panel-subtitle">文章来源时间尚未核实，导入时间不作为发布时间；图片与音频未完整处理。刷新页面可查看最新状态。</p></section>'''
+
+
 def _render_article_body(item: News) -> str:
     content = (item.content or "").strip()
     summary = (item.summary or "").strip()
@@ -545,7 +578,7 @@ def _render_nav(active_tab: str) -> str:
     links = []
     for key, href, label in tabs:
         class_name = "nav-link active" if key == active_tab else "nav-link"
-        links.append(f"<a class='{class_name}' href='{BASE_PATH}{href}'>{label}</a>")
+        links.append(f"<a class='{class_name}' {"aria-current=\"page\"" if key == active_tab else ""} href='{BASE_PATH}{href}'>{label}</a>")
     return "".join(links)
 
 
@@ -578,685 +611,25 @@ def _render_layout(
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta http-equiv="refresh" content="3600" />
       <title>{escape(page_title or hero_title)}</title>
-      <style>
-        :root {{
-          --bg: #f5f0e7;
-          --panel: rgba(255,255,255,0.86);
-          --ink: #16202a;
-          --muted: #61707d;
-          --accent: #a0322d;
-          --accent-2: #235c79;
-          --line: rgba(35,43,51,0.12);
-          --shadow: 0 18px 40px rgba(37,31,24,0.08);
-        }}
-        * {{ box-sizing: border-box; }}
-        body {{
-          margin: 0;
-          color: var(--ink);
-          font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
-          background:
-            radial-gradient(circle at top left, rgba(160, 50, 45, 0.14), transparent 28%),
-            radial-gradient(circle at top right, rgba(35, 92, 121, 0.12), transparent 26%),
-            linear-gradient(180deg, #faf4ea 0%, var(--bg) 100%);
-        }}
-        a {{ color: inherit; text-decoration: none; }}
-        .shell {{ max-width: 1220px; margin: 0 auto; padding: 22px 16px 44px; }}
-        .hero {{
-          border: 1px solid var(--line);
-          border-radius: 28px;
-          background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(247,240,231,0.92));
-          box-shadow: var(--shadow);
-          padding: 24px;
-        }}
-        .eyebrow {{
-          display: inline-flex;
-          align-items: center;
-          padding: 7px 12px;
-          border-radius: 999px;
-          background: rgba(160, 50, 45, 0.08);
-          color: var(--accent);
-          font-size: 13px;
-          font-weight: 700;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-        }}
-        .hero h1 {{
-          margin: 12px 0 8px;
-          font-size: clamp(30px, 4vw, 46px);
-          line-height: 1.08;
-        }}
-        .hero p {{
-          margin: 0;
-          max-width: 860px;
-          color: var(--muted);
-          line-height: 1.75;
-        }}
-        .nav-row {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 16px;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-        }}
-        .nav-link, .pager-link {{
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 10px 14px;
-          min-height: 42px;
-          border-radius: 999px;
-          border: 1px solid var(--line);
-          background: rgba(255,255,255,0.86);
-          color: var(--ink);
-          transition: transform 0.15s ease, opacity 0.15s ease;
-          white-space: nowrap;
-        }}
-        .nav-link.active, .pager-link.current {{
-          background: var(--accent);
-          border-color: transparent;
-          color: white;
-        }}
-        .nav-link:hover, .pager-link:hover {{
-          transform: translateY(-1px);
-          opacity: 0.96;
-        }}
-        .toolbar {{
-          display: grid;
-          gap: 10px;
-          margin-top: 16px;
-        }}
-        .search-form, .actions {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          align-items: center;
-        }}
-        .search-form {{
-          padding: 10px 12px;
-          border: 1px solid var(--line);
-          border-radius: 999px;
-          background: rgba(255,255,255,0.88);
-        }}
-        .search-form input {{
-          flex: 1 1 320px;
-          border: 0;
-          background: transparent;
-          outline: none;
-          color: var(--ink);
-          font: inherit;
-        }}
-        .toolbar-note {{
-          color: var(--muted);
-          font-size: 13px;
-          line-height: 1.6;
-          padding-inline: 4px;
-        }}
-        .search-form select,
-        button {{
-          font: inherit;
-        }}
-        .search-form select {{
-          border: 1px solid var(--line);
-          border-radius: 999px;
-          padding: 10px 14px;
-          min-height: 42px;
-          background: rgba(255,255,255,0.94);
-        }}
-        button {{
-          padding: 10px 16px;
-          min-height: 42px;
-          border: 1px solid transparent;
-          border-radius: 999px;
-          background: var(--accent);
-          color: white;
-          cursor: pointer;
-        }}
-        .ghost-link {{
-          display: inline-flex;
-          align-items: center;
-          min-height: 42px;
-          padding: 10px 16px;
-          border-radius: 999px;
-          background: rgba(35, 92, 121, 0.96);
-          color: white;
-        }}
-        .stats {{
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 12px;
-          margin-top: 16px;
-        }}
-        .stat {{
-          padding: 14px;
-          border-radius: 18px;
-          background: rgba(255,255,255,0.84);
-          border: 1px solid var(--line);
-        }}
-        .stat strong {{
-          display: block;
-          margin-bottom: 8px;
-          color: var(--muted);
-          font-size: 13px;
-        }}
-        .stat span {{
-          font-size: 18px;
-          font-weight: 700;
-        }}
-        .layout {{
-          display: grid;
-          grid-template-columns: minmax(0, 1.72fr) minmax(280px, 0.82fr);
-          gap: 18px;
-          margin-top: 18px;
-          align-items: start;
-        }}
-        .main-stack {{
-          display: grid;
-          gap: 18px;
-        }}
-        .side-stack {{
-          display: grid;
-          gap: 18px;
-          position: sticky;
-          top: 18px;
-          max-height: calc(100vh - 36px);
-          overflow: auto;
-          padding-right: 4px;
-        }}
-        .panel {{
-          border: 1px solid var(--line);
-          border-radius: 24px;
-          background: var(--panel);
-          box-shadow: var(--shadow);
-          padding: 20px;
-        }}
-        .panel h2 {{
-          margin: 0 0 12px;
-          font-size: 24px;
-        }}
-        .panel-head {{
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-          gap: 12px;
-          flex-wrap: wrap;
-          margin-bottom: 12px;
-        }}
-        .panel-subtitle {{
-          color: var(--muted);
-          font-size: 14px;
-          line-height: 1.7;
-        }}
-        .scroll-shell {{
-          margin-top: 8px;
-          padding-right: 6px;
-          overflow-y: auto;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(35, 92, 121, 0.45) transparent;
-        }}
-        .scroll-shell.stream {{
-          max-height: min(52vh, 760px);
-        }}
-        .scroll-shell.months {{
-          max-height: min(58vh, 860px);
-        }}
-        .scroll-shell.shelf {{
-          max-height: min(42vh, 520px);
-        }}
-        .scroll-shell::-webkit-scrollbar {{
-          width: 8px;
-        }}
-        .scroll-shell::-webkit-scrollbar-thumb {{
-          background: rgba(35, 92, 121, 0.3);
-          border-radius: 999px;
-        }}
-        .news-card {{
-          padding: 14px 0;
-        }}
-        .news-card + .news-card,
-        .mini-card + .mini-card {{
-          border-top: 1px solid rgba(35,43,51,0.08);
-        }}
-        .news-meta {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-bottom: 6px;
-          color: var(--muted);
-          font-size: 13px;
-        }}
-        .news-meta span + span::before {{
-          content: "·";
-          margin-right: 10px;
-          color: #97a5b2;
-        }}
-        .meta-cluster {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          margin-bottom: 10px;
-        }}
-        .meta-pill {{
-          display: inline-flex;
-          align-items: center;
-          min-height: 28px;
-          padding: 5px 10px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
-          border: 1px solid rgba(35,43,51,0.08);
-          background: rgba(255,255,255,0.72);
-        }}
-        .meta-pill.source {{
-          color: var(--accent-2);
-          background: rgba(35,92,121,0.09);
-        }}
-        .meta-pill.category {{
-          color: #83561b;
-          background: rgba(183,132,43,0.14);
-        }}
-        .meta-pill.trust {{
-          color: var(--accent);
-          background: rgba(160,50,45,0.1);
-        }}
-        .meta-pill.domain {{
-          color: #5e6972;
-          background: rgba(22,32,42,0.05);
-        }}
-        .news-card h4, .mini-card h4 {{
-          margin: 0 0 6px;
-          line-height: 1.55;
-        }}
-        .news-card h4 {{ font-size: 18px; }}
-        .mini-card h4 {{ font-size: 16px; margin-top: 6px; }}
-        .news-card p, .mini-card p {{
-          margin: 0;
-          color: #2d3740;
-          line-height: 1.72;
-        }}
-        .card-actions {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 10px;
-        }}
-        .headline-layout {{
-          display: grid;
-          grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.85fr);
-          gap: 18px;
-        }}
-        .headline-lead {{
-          padding: 18px;
-          border-radius: 20px;
-          background: rgba(255,255,255,0.72);
-          border: 1px solid rgba(35,43,51,0.08);
-        }}
-        .headline-lead h3 {{
-          margin: 0 0 10px;
-          font-size: 28px;
-          line-height: 1.4;
-        }}
-        .headline-lead p {{
-          margin: 0;
-          line-height: 1.8;
-          color: #2d3740;
-        }}
-        .headline-side {{
-          display: grid;
-          gap: 10px;
-        }}
-        .headline-mini {{
-          padding: 14px 16px;
-          border-radius: 18px;
-          background: rgba(255,255,255,0.72);
-          border: 1px solid rgba(35,43,51,0.08);
-        }}
-        .headline-mini span {{
-          display: block;
-          margin-bottom: 6px;
-          font-size: 12px;
-          color: var(--muted);
-        }}
-        .headline-mini a {{
-          font-size: 16px;
-          line-height: 1.7;
-          font-weight: 700;
-        }}
-        .inline-link {{
-          display: inline-flex;
-          align-items: center;
-          padding: 7px 12px;
-          border-radius: 999px;
-          background: rgba(35, 92, 121, 0.08);
-          color: var(--accent-2);
-          font-size: 13px;
-          font-weight: 700;
-        }}
-        .mini-card {{
-          padding: 12px 0;
-        }}
-        .mini-date {{
-          font-size: 12px;
-          color: var(--muted);
-        }}
-        .source-grid {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-        }}
-        .source-chip {{
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 12px;
-          border-radius: 999px;
-          border: 1px solid var(--line);
-          background: rgba(255,255,255,0.76);
-          color: var(--ink);
-          font-size: 14px;
-        }}
-        .source-chip span {{
-          color: var(--muted);
-          font-size: 12px;
-        }}
-        .source-chip.active {{
-          background: var(--accent);
-          border-color: transparent;
-          color: white;
-        }}
-        .source-chip.active span {{
-          color: rgba(255,255,255,0.82);
-        }}
-        .year-grid {{
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 12px;
-        }}
-        .category-grid {{
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 12px;
-        }}
-        .year-card {{
-          padding: 16px;
-          border-radius: 18px;
-          border: 1px solid var(--line);
-          background: rgba(255,255,255,0.74);
-        }}
-        .year-card strong {{
-          display: block;
-          font-size: 22px;
-          color: var(--accent);
-          margin-bottom: 6px;
-        }}
-        .year-card span {{
-          color: var(--muted);
-          font-size: 14px;
-        }}
-        .category-card {{
-          display: block;
-          padding: 16px;
-          border-radius: 18px;
-          border: 1px solid var(--line);
-          background: rgba(255,255,255,0.74);
-        }}
-        .category-card strong {{
-          display: block;
-          font-size: 19px;
-          color: var(--accent-2);
-          margin-bottom: 6px;
-        }}
-        .category-card span {{
-          color: var(--muted);
-          font-size: 14px;
-        }}
-        .sync-grid {{
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-          margin-top: 6px;
-        }}
-        .sync-item {{
-          padding: 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(35,43,51,0.08);
-          background: rgba(255,255,255,0.72);
-        }}
-        .sync-item strong {{
-          display: block;
-          font-size: 12px;
-          color: var(--muted);
-          margin-bottom: 5px;
-        }}
-        .sync-item span {{
-          font-size: 14px;
-          line-height: 1.5;
-        }}
-        .health-card {{
-          padding: 14px 0;
-        }}
-        .health-card + .health-card {{
-          border-top: 1px solid rgba(35,43,51,0.08);
-        }}
-        .health-head {{
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 6px;
-        }}
-        .health-meta {{
-          color: var(--muted);
-          font-size: 13px;
-          margin-bottom: 8px;
-        }}
-        .health-grid {{
-          display: grid;
-          gap: 6px;
-          color: #2d3740;
-          font-size: 14px;
-        }}
-        .health-badge {{
-          display: inline-flex;
-          align-items: center;
-          padding: 6px 10px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
-        }}
-        .health-badge.healthy {{
-          background: rgba(41, 122, 76, 0.12);
-          color: #297a4c;
-        }}
-        .health-badge.warm {{
-          background: rgba(184, 118, 21, 0.14);
-          color: #9a5d04;
-        }}
-        .health-badge.stale {{
-          background: rgba(160, 50, 45, 0.12);
-          color: var(--accent);
-        }}
-        .status-badge {{
-          display: inline-flex;
-          align-items: center;
-          padding: 7px 12px;
-          border-radius: 999px;
-          background: rgba(35, 92, 121, 0.12);
-          color: var(--accent-2);
-          font-size: 13px;
-          font-weight: 700;
-        }}
-        .status-badge.busy {{
-          background: rgba(160, 50, 45, 0.12);
-          color: var(--accent);
-        }}
-        .notice {{
-          margin-top: 12px;
-          padding: 13px 14px;
-          border-radius: 16px;
-          border: 1px solid var(--line);
-          background: rgba(255,255,255,0.78);
-          line-height: 1.7;
-        }}
-        .compact {{ margin-top: 10px; }}
-        .compact-actions {{
-          margin-top: 10px;
-        }}
-        details.month-block {{
-          border: 1px solid rgba(35,43,51,0.08);
-          border-radius: 18px;
-          background: rgba(255,255,255,0.7);
-          padding: 0 14px 8px;
-        }}
-        details.month-block + details.month-block {{
-          margin-top: 14px;
-        }}
-        summary.month-title {{
-          list-style: none;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          cursor: pointer;
-          margin: 0 -14px;
-          padding: 14px;
-          color: var(--accent);
-          font-weight: 700;
-        }}
-        summary.month-title::-webkit-details-marker {{
-          display: none;
-        }}
-        summary.month-title::after {{
-          content: "展开";
-          color: var(--muted);
-          font-size: 12px;
-          font-weight: 600;
-        }}
-        details[open] > summary.month-title::after {{
-          content: "收起";
-        }}
-        .pager {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 18px;
-        }}
-        .pager-link {{
-          background: rgba(35, 92, 121, 0.92);
-          color: white;
-          border: 0;
-        }}
-        .pager-link.current {{
-          background: var(--accent);
-          pointer-events: none;
-        }}
-        .empty-state {{
-          padding: 18px;
-          border-radius: 18px;
-          border: 1px dashed rgba(160,50,45,0.28);
-          background: rgba(255,248,242,0.84);
-          color: #5c4640;
-          line-height: 1.8;
-        }}
-        .helper-list {{
-          display: grid;
-          gap: 10px;
-        }}
-        .helper-chip {{
-          display: inline-flex;
-          align-items: center;
-          padding: 8px 12px;
-          border-radius: 999px;
-          border: 1px solid var(--line);
-          background: rgba(255,255,255,0.76);
-          font-size: 14px;
-        }}
-        .source-reference {{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-        }}
-        .article-shell {{
-          display: grid;
-          gap: 18px;
-        }}
-        .article-meta-grid {{
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-        }}
-        .article-body {{
-          display: grid;
-          gap: 14px;
-          line-height: 1.9;
-          font-size: 17px;
-        }}
-        .article-body p {{
-          margin: 0;
-        }}
-        .site-footer {{
-          margin-top: 18px;
-          padding: 14px 16px;
-          border: 1px solid var(--line);
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.74);
-          color: var(--muted);
-          font-size: 13px;
-          line-height: 1.7;
-        }}
-        mark {{
-          padding: 0 4px;
-          border-radius: 6px;
-          background: rgba(255, 206, 92, 0.72);
-          color: inherit;
-        }}
-        @media (max-width: 1080px) {{
-          .layout {{ grid-template-columns: 1fr; }}
-          .headline-layout {{ grid-template-columns: 1fr; }}
-          .side-stack {{
-            position: static;
-            max-height: none;
-            overflow: visible;
-            padding-right: 0;
-          }}
-          .stats {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-          .article-meta-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-        }}
-        @media (max-width: 720px) {{
-          .shell {{ padding-inline: 12px; }}
-          .hero {{ padding: 20px; }}
-          .stats, .sync-grid, .article-meta-grid {{ grid-template-columns: 1fr; }}
-          .nav-row {{ flex-wrap: nowrap; padding-bottom: 4px; }}
-          .search-form {{ border-radius: 18px; }}
-          .search-form input,
-          .search-form select,
-          .search-form button {{
-            width: 100%;
-            flex: 1 1 100%;
-          }}
-          .search-form button {{ justify-content: center; }}
-          .scroll-shell.stream,
-          .scroll-shell.months {{
-            max-height: none;
-            overflow: visible;
-            padding-right: 0;
-          }}
-        }}
-      </style>
+      <link rel="stylesheet" href="{BASE_PATH}/static/study.css?v=4" />
+      <link rel="stylesheet" href="{BASE_PATH}/static/reference.css?v=1" />
+      <script src="{BASE_PATH}/static/study.js?v=4" defer></script>
     </head>
-    <body>
-      <main class="shell">
+    <body class="reference-page">
+      <a class="skip-link" href="#reference-content">跳到页面内容</a>
+      {header(BASE_PATH, "categories" if active_tab == "categories" else "archive" if active_tab in {"archive", "years", "year"} else "today" if active_tab in {"today", "yesterday"} else "")}
+      <main class="reference-shell" id="reference-content">
         <section class="hero">
-          <div class="eyebrow">Political News System</div>
+          <div class="eyebrow">THE READING ARCHIVE</div>
           <h1>{escape(hero_title)}</h1>
           <p>{escape(hero_text)}</p>
 
-          <div class="nav-row">{_render_nav(active_tab)}</div>
+          <nav class="nav-row" aria-label="资料导航">{_render_nav(active_tab)}</nav>
 
           <div class="toolbar">
             <form method="get" action="{BASE_PATH}/search" class="search-form">
-              <input type="search" name="q" value="{escape(search_query)}" placeholder="搜索标题、正文或日期，例如 2025-03、2026-04-11" />
-              <select name="year">{_render_year_select(year_counts, current_year, selected_year)}</select>
+              <input aria-label="搜索资料库" type="search" name="q" value="{escape(search_query)}" placeholder="搜索标题、正文或日期，例如 2025-03、2026-04-11" />
+              <select aria-label="检索年份" name="year">{_render_year_select(year_counts, current_year, selected_year)}</select>
               <button type="submit">搜索</button>
             </form>
             <div class="toolbar-note">搜索只保留一个入口，默认按 {current_year} 年检索；要看同步情况，直接切到上方的同步状态页。</div>
@@ -1274,6 +647,7 @@ def _render_layout(
         </footer>
       </main>
 
+      {collection()}
       <script>
         async function refreshSyncStatus() {{
           const badge = document.getElementById('sync-badge');
@@ -1865,6 +1239,7 @@ async def news_detail_page(news_id: int) -> HTMLResponse:
         f"<div class='sync-item'><strong>来源域名</strong><span>{escape(_source_hostname(item.link))}</span></div>"
         "</div>"
         "<div class='actions'>"
+        f"{bookmark(str(item.id), item.title, f'{BASE_PATH}/news/{item.id}', item.published_at.strftime('%Y-%m-%d'))}"
         f"<a class='ghost-link' href='{escape(item.link)}' target='_blank' rel='noreferrer'>原站原文</a>"
         f"<a class='ghost-link' href='{_build_href(f'/year/{item.year}', source=item.source)}'>查看同年同来源</a>"
         "</div>"
@@ -1921,7 +1296,7 @@ async def status_page(sync_status: str = Query(default="")) -> HTMLResponse:
     last_sync_at = get_app_state("last_sync_at", "尚未同步")
     last_sync_result = sync_status or get_app_state("last_sync_result", "")
 
-    main_html = _render_sync_panel(task_status, last_sync_at, last_sync_result)
+    main_html = _render_learning_status() + _render_sync_panel(task_status, last_sync_at, last_sync_result)
     side_html = (
         "<section class='panel'>"
         "<div class='panel-head'><div><h2>状态说明</h2><div class='panel-subtitle'>同步页只保留任务状态和告警，不再展示来源覆盖。</div></div></div>"

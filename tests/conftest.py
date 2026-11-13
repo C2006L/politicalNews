@@ -1,56 +1,85 @@
+"""Offline tests share the application's temporary database, never the user's DB."""
 import os
+import socket
 import sys
+import tempfile
 import warnings
+from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 
-# 新版 starlette 在导入 testclient 时会发出弃用警告，而项目 pytest 配置将警告视为错误。
-# 这里只屏蔽该次导入期间的警告，避免因依赖版本漂移导致测试收集失败。
+# These must be set before any app import creates engines or reads configuration.
+_test_root = tempfile.TemporaryDirectory(prefix="political-news-tests-")
+os.environ["DATABASE_URL"] = "sqlite:///" + (Path(_test_root.name) / "tests.db").as_posix()
+os.environ["AUTO_SYNC_ON_STARTUP"] = "0"
+os.environ["BOOTSTRAP_RECENT_NEWS_ON_STARTUP"] = "0"
+os.environ["SCHEDULER_ENABLED"] = "0"
+os.environ["WERSS_DATABASE_PATH"] = ""
+os.environ["EXPOSE_API_DOCS"] = "1"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from fastapi.testclient import TestClient
 
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-
-# 添加项目根目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from sqlalchemy import text
+from app.database import SessionLocal, engine, init_db
 from app.main import app
 from app.models import Base
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(autouse=True)
+def isolated_runtime(monkeypatch):
+    connect = socket.socket.connect
+    connect_ex = socket.socket.connect_ex
+    def allowed(address):
+        return isinstance(address, tuple) and address[0] in {"127.0.0.1", "::1"}
+    def no_network(sock, address):
+        if allowed(address):
+            return connect(sock, address)
+        raise AssertionError("External network access is disabled in ordinary tests.")
+    def no_network_ex(sock, address):
+        if allowed(address):
+            return connect_ex(sock, address)
+        raise AssertionError("External network access is disabled in ordinary tests.")
+
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.setattr(socket.socket, "connect_ex", no_network_ex)
+    monkeypatch.setenv("AUTO_SYNC_ON_STARTUP", "0")
+    monkeypatch.setenv("BOOTSTRAP_RECENT_NEWS_ON_STARTUP", "0")
+    monkeypatch.setenv("SCHEDULER_ENABLED", "0")
+    monkeypatch.setenv("WERSS_DATABASE_PATH", "")
+    monkeypatch.setenv("EXPOSE_API_DOCS", "1")
+    import app.sync_service as sync
+    def no_worker(*args, **kwargs):
+        raise AssertionError("Real collection workers are disabled in tests.")
+    monkeypatch.setattr(sync, "threading", SimpleNamespace(Thread=no_worker))
+    init_db()
+    with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
+        conn.execute(text("DELETE FROM news_fts"))
+    yield
+
+
+@pytest.fixture
 def test_db():
-    """创建测试数据库（会话结束时释放引擎，避免未关闭连接告警）。"""
-    test_engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=test_engine)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-    yield TestingSessionLocal
-    test_engine.dispose()
+    return SessionLocal
 
 
 @pytest.fixture
 def db_session(test_db):
-    """提供数据库会话"""
-    session = test_db()
-    try:
+    with test_db() as session:
         yield session
-    finally:
-        session.close()
 
 
 @pytest.fixture
 def client():
-    """提供测试客户端"""
     with TestClient(app) as test_client:
         yield test_client
 
 
-@pytest.fixture(autouse=True)
-def mock_env_vars(monkeypatch):
-    """模拟环境变量"""
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("AUTO_SYNC_ON_STARTUP", "0")
-    monkeypatch.setenv("BOOTSTRAP_RECENT_NEWS_ON_STARTUP", "0")
-    monkeypatch.setenv("EXPOSE_API_DOCS", "1")
+def pytest_unconfigure(config):
+    engine.dispose()
+    _test_root.cleanup()

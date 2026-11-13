@@ -248,37 +248,21 @@ def _run_background_sync(
 
 
 def month_batches(total_months: int, batch_size: int = 3) -> List[Tuple[datetime, datetime, int]]:
-    now = datetime.now(LOCAL_TZ).replace(day=1, hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    if total_months < 0 or batch_size <= 0:
+        raise ValueError("total_months must be nonnegative and batch_size must be positive")
+    now = datetime.now(LOCAL_TZ)
+    end_index = now.year * 12 + now.month - 1
     batches: List[Tuple[datetime, datetime, int]] = []
     remaining = total_months
-    current_end = now
-
-    while remaining > 0 and current_end.year >= 2000:
-        current_batch = min(batch_size, remaining)
-
-        if current_end.month == 1:
-            batch_start_month = current_end.replace(year=current_end.year - (current_batch - 1), month=1, day=1)
-        else:
-            month_index = current_end.year * 12 + current_end.month - 1
-            start_index = month_index - (current_batch - 1)
-            start_year = start_index // 12
-            start_month = start_index % 12 + 1
-            batch_start_month = datetime(start_year, start_month, 1)
-
-        if current_end.month == 12:
-            next_month = current_end.replace(year=current_end.year + 1, month=1, day=1)
-        else:
-            next_month = current_end.replace(month=current_end.month + 1, day=1)
-
-        start = batch_start_month
-        end = next_month - timedelta(seconds=1)
-        batches.append((start, end, current_batch))
-        remaining -= current_batch
-
-        if batch_start_month.month == 1:
-            current_end = batch_start_month.replace(year=batch_start_month.year - 1, month=12, day=1)
-        else:
-            current_end = batch_start_month.replace(month=batch_start_month.month - 1, day=1)
+    while remaining > 0 and end_index >= 2000 * 12:
+        count = min(batch_size, remaining, end_index - 2000 * 12 + 1)
+        start_index = end_index - count + 1
+        start = datetime(start_index // 12, start_index % 12 + 1, 1)
+        next_index = end_index + 1
+        end = datetime(next_index // 12, next_index % 12 + 1, 1) - timedelta(seconds=1)
+        batches.append((start, end, count))
+        remaining -= count
+        end_index = start_index - 1
 
     return batches
 

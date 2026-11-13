@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from typing import Any
+
+from sqlalchemy import DateTime, Integer, String, Text, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -29,3 +31,16 @@ class AppState(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class LearningMaterial(Base):
+    __tablename__ = "learning_materials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    account: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    url: Mapped[str] = mapped_column(String, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    imported_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

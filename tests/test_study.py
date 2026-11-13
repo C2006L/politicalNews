@@ -53,8 +53,24 @@ class StudyTests(unittest.TestCase):
     def test_empty_database_has_clear_guidance(self):
         html = self.render([])
         self.assertIn("这里还没有阅读材料", html)
-        self.assertIn('data-read-count>0', html)
+        self.assertNotIn('本页阅读进度', html)
         self.assertNotIn('class="reading-card"', html)
+
+    def test_directory_and_cards_use_the_same_page(self):
+        rows = [news(i, f"阅读材料 {i}") for i in range(1, 13)]
+        html = render_study(items=rows, today_items=rows, track="all", topic="all",
+                            page=2, base="/prefix", total=12, now=datetime(2026, 11, 12))
+        self.assertIn('href="#reading-11"', html)
+        self.assertIn('id="reading-11"', html)
+        self.assertNotIn('href="#reading-1"', html)
+        self.assertIn('今日阅读 / 2 篇', html)
+        self.assertIn('/prefix/today?page=1', html)
+
+    def test_fallback_date_sheet_matches_material_date(self):
+        html = self.render([news(1, "往期材料", day=11)], today_items=[])
+        self.assertIn('<div class="day">11</div>', html)
+        self.assertIn('星期三', html)
+        self.assertIn('近期阅读', html)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from typing import Sequence
 from urllib.parse import urlencode, urlparse
 
 from app.models import News
+from app.chrome import header, collection
 from app.news_data import source_label
 
 TRACKS = {"all": "综合阅读", "postgrad": "考研政治", "civil": "公考常识", "essay": "申论面试"}
@@ -99,13 +100,13 @@ def article_card(reading: Reading, index: int, track: str, base: str) -> str:
             continue
         sources.append(f'<a href="{escape(article.link, quote=True)}" target="_blank" rel="noopener noreferrer">{escape(source_label(article.source))} ↗</a>')
     detail = href(base, f"/news/{item.id}")
-    return f'''<article class="reading-card" data-id="{reading.key}" data-title="{escape(item.title, quote=True)}" data-url="{detail}" data-date="{item.published_at:%Y-%m-%d}">
-      <span class="ordinal" aria-label="第{index}条">{index:02d}</span><div class="card-content">
-      <div class="card-top"><span class="tag">{escape(label)}</span><span class="source-name">{escape(source_label(item.source))}</span><span class="card-date">{item.published_at:%m月%d日}</span><span class="read-label" hidden>已读</span></div>
+    return f'''<article class="reading-card story" id="reading-{reading.key}" data-id="{reading.key}" data-title="{escape(item.title, quote=True)}" data-url="{detail}" data-date="{item.published_at:%Y-%m-%d}">
+      <span class="ordinal number" aria-label="第{index}条">{index:02d}</span><div class="card-content">
+      <div class="card-top meta"><span class="tag">{escape(label)}</span><span class="source-name">{escape(source_label(item.source))}</span><span class="card-date">{item.published_at:%m月%d日}</span><span class="read-label" hidden>已读</span></div>
       <h3><a href="{detail}">{escape(item.title)}</a></h3>
       <p class="excerpt">{escape(excerpt)}</p>
-      <div class="card-bottom"><details class="evidence"><summary>{len(set(a.source for a in reading.articles))} 个刊载来源 · 查看依据</summary><p>{escape('；'.join(reading.reasons))}。同标题稿件合并，来源数不等于独立报道数。</p><div class="source-links">{' '.join(sources)}</div></details>
-      <div class="card-actions"><button type="button" data-action="read" aria-pressed="false">标为已读</button><button type="button" data-action="save" aria-pressed="false">收藏</button><a class="detail-link" href="{detail}">阅读全文 →</a></div></div>
+      <details class="evidence"><summary>{len(set(a.source for a in reading.articles))} 个刊载来源 · 查看依据</summary><p>{escape('；'.join(reading.reasons))}。同标题稿件合并，来源数不等于独立报道数。</p><div class="source-links">{' '.join(sources)}</div></details>
+      <div class="card-actions actions"><button type="button" data-action="read" aria-pressed="false">标为已读</button><button type="button" data-action="save" aria-pressed="false">收藏</button><a class="detail-link read-source" href="{detail}">阅读全文 ↗</a></div>
       </div>
     </article>'''
 
@@ -130,7 +131,14 @@ def render_study(*, items: Sequence[News], today_items: Sequence[News], track: s
         cards = '<div class="empty-state"><h3>这里还没有阅读材料</h3><p>可切换主题或备考方向。若资料库为空，请稍后刷新，或前往同步状态查看采集进度。</p></div>'
     pager = ''.join(f'<a {"aria-current=\"page\"" if number == page else ""} href="{href(base, "/today", page=number, track=track, topic=topic, source=source)}">{number}</a>' for number in range(max(1, page - 2), min(pages, page + 2) + 1)) if pages > 1 else ''
     latest_text = max((item.published_at for item in pool), default=None)
+    edition = latest_text or now
+    directory = ''.join(
+        f'<li><a href="#reading-{reading.key}"><span>{(page - 1) * 10 + idx:02d}</span>'
+        f'<em>{escape(reading.item.title)}</em></a></li>'
+        for idx, reading in enumerate(current, 1)
+    )
     substitutions = {
+        "site_header": header(base, "today"), "site_library": collection(),
         "base": escape(base, quote=True), "date": now.strftime("%Y.%m.%d"),
         "weekday": "星期" + "一二三四五六日"[now.weekday()], "tracks": track_links,
         "topics": topic_links, "cards": cards, "pager": pager,
@@ -140,5 +148,11 @@ def render_study(*, items: Sequence[News], today_items: Sequence[News], track: s
         "notice": escape(("今日暂无更新，已显示最近时政。" if fallback else "") + (f"当前筛选来源：{source_label(source)}。" if source else "") + "同日同标题稿件合并展示；刊载来源数不等于独立报道数。"),
         "scope": "近期阅读" if fallback else "今日阅读",
         "guide": GUIDES[track],
+        "edition_month": edition.strftime("%Y / %m"),
+        "edition_day": edition.strftime("%d"),
+        "edition_weekday": "星期" + "一二三四五六日"[edition.weekday()],
+        "edition_label": "资料日期" if latest_text else "等待采集",
+        "directory": directory or '<li class="directory-empty">暂无阅读材料</li>',
+        "page_count": str(len(current)),
     }
     return Template((Path(__file__).parent / "templates" / "study.html").read_text(encoding="utf-8")).substitute(substitutions)

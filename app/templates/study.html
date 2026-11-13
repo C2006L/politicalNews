@@ -1,18 +1,24 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="考研与公考每日时政阅读，按方向筛选新闻、查看原文并收藏。"><title>$section_title · 时政自习室</title><link rel="stylesheet" href="$base/static/study.css?v=2"><script src="$base/static/study.js?v=2" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="考研与公考每日时政阅读，按方向筛选新闻、查看原文并收藏。"><title>$section_title · 时政自习室</title><link rel="stylesheet" href="$base/static/study.css?v=4"><script src="$base/static/study.js?v=4" defer></script></head>
 <body>
 <a class="skip-link" href="#reading">跳到新闻列表</a>
-<header class="site-header"><div class="header-inner"><a class="brand" href="$base/"><span class="brand-mark">时</span>时政自习室</a><nav aria-label="主导航"><a class="current" href="$base/today" aria-current="page">每日时政</a><a href="$base/archive">往期回顾</a><a href="$base/categories">专题资料</a></nav><button class="library-toggle" type="button" aria-expanded="false" aria-controls="library">我的收藏 <span data-save-count>0</span></button></div></header>
-<main class="page">
-  <section class="page-heading"><div><div class="heading-row"><h1>$section_title</h1><span class="edition-date">$date · $weekday</span></div><p class="reading-description">$track <span>·</span> $count 组材料 <span>·</span> 资料日期 $reading_date</p></div><form class="search-form" action="$base/search" method="get"><label class="sr-only" for="study-search">搜索政策、关键词或日期</label><input id="study-search" name="q" placeholder="搜索政策、关键词或日期" required maxlength="120"><button type="submit">搜索</button></form></section>
-  <section class="filters" aria-label="新闻筛选"><div class="filter-row"><span class="filter-label">备考方向</span><nav class="tracks" aria-label="备考方向">$tracks</nav></div><div class="filter-row"><span class="filter-label">新闻主题</span><nav class="topics" aria-label="主题筛选">$topics</nav></div></section>
-  <section id="reading" class="reading-section"><div class="list-toolbar"><div class="list-title"><h2>新闻列表</h2><span>按备考关联规则排序</span></div><div class="reading-progress"><span>本页已读 <strong data-read-count>0</strong> / <span data-visible-count>0</span></span><div class="progress-track" role="progressbar" aria-label="本页阅读进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div data-progress></div></div></div></div>
-    <details class="list-explainer"><summary>筛选与排序说明</summary><p>$notice</p><p>排序参考标题主题、所选方向与刊载来源，不代表命题预测。导读摘自原文，尚未生成 AI 总结。</p></details>
-    <div class="reading-list">$cards</div><nav class="pagination" aria-label="阅读分页">$pager</nav>
-  </section>
-  <section id="library" class="library" hidden aria-labelledby="library-title"><div class="heading-row"><h2 id="library-title">我的收藏</h2><button type="button" data-close-library>收起</button></div><p>仅保存在当前浏览器，清理浏览器数据后会丢失。</p><ul data-saved-list></ul></section>
-</main>
-<footer><span>导读摘自公开报道，请以原文为准。已读与收藏保存在当前浏览器。</span><div class="footer-links"><a href="$base/sources">数据来源</a><a href="$base/status">同步状态</a></div></footer>
-<div class="toast" role="status" aria-live="polite" hidden></div>
+$site_header
+<div class="shell">
+  <aside class="rail" aria-label="阅读案头">
+    <div class="date-sheet"><div class="month"><span>$edition_month</span><span>$edition_label</span></div><div class="day">$edition_day</div><div class="date-foot"><span>$edition_weekday</span><span>$scope</span></div></div>
+    <nav class="reading-directory" aria-label="本页新闻目录"><p class="rail-label directory-label">本页目录 / CONTENTS</p><ol class="directory">$directory</ol></nav>
+    <p class="rail-note">资料源自公开报道<br>导读摘自原文，非 AI 总结。<br>排序不代表命题预测。</p>
+  </aside>
+  <main class="workspace">
+    <section class="intro"><div><div class="eyebrow">THE DAILY READING ROOM</div><h1>读时政，知当下。</h1><p>$section_title · $track · $count 组材料</p><p class="reading-date">资料日期 $reading_date</p></div><form class="search" action="$base/search" method="get" role="search"><label class="sr-only" for="study-search">搜索资料库</label><input id="study-search" name="q" placeholder="搜索政策、关键词或日期" required maxlength="120"><button type="submit" aria-label="搜索资料库">⌕</button></form></section>
+    <section class="filters" aria-label="新闻筛选"><div class="filter-line"><span class="filter-label">阅读方向</span><nav class="options tracks" aria-label="备考方向">$tracks</nav></div><div class="filter-line"><span class="filter-label">新闻主题</span><nav class="options topics" aria-label="主题筛选">$topics</nav></div></section>
+    <section id="reading" class="reading-section" tabindex="-1"><div class="list-head"><h2>$scope / $page_count 篇</h2><details class="list-explainer"><summary>排序与来源说明</summary><div><p>$notice</p><p>排序参考标题主题、所选方向与刊载来源，不代表命题预测。</p><p>$guide</p></div></details></div>
+      <div class="reading-list">$cards</div><nav class="pagination" aria-label="阅读分页">$pager</nav>
+    </section>
+    <div class="bottom"><span>本页完 · 阅读按自己的节奏</span><a href="#reading">回到列表 ↑</a></div>
+  </main>
+</div>
+<footer class="site-footer"><span>导读摘自公开报道，请以原文为准。已读与收藏保存在当前浏览器。</span><div><a href="$base/sources">数据来源</a><a href="$base/status">同步状态</a></div></footer>
+$site_library
 </body></html>

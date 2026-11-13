@@ -309,14 +309,19 @@ def test_sync_endpoint_returns_409_when_busy(client, monkeypatch):
     assert response.status_code == 409
 
 
-def test_backfill_view_endpoint(client):
+def test_backfill_view_endpoint(client, monkeypatch):
     """测试分批回填视图端点"""
+    from app.routers import sync_routes
+    from unittest.mock import Mock
+    start = Mock(return_value=True)
+    monkeypatch.setattr(sync_routes, "start_batched_backfill", start)
     response = client.get(
         "/backfill-view?months=6&batch_size=2&max_items=50",
         follow_redirects=False,
     )
     assert response.status_code == 303  # 重定向
     assert response.headers["location"].startswith("/status?sync_status=")
+    start.assert_called_once_with("近6个月分批回填", total_months=6, batch_size=2, max_items=50)
 
 
 def test_sync_view_redirects_to_status(client, monkeypatch):

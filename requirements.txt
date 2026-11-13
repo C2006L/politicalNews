@@ -7,3 +7,6 @@ sqlalchemy==2.0.51
 psycopg2-binary==2.9.12
 beautifulsoup4==4.15.0
 jieba==0.42.1
+
+python-dotenv==1.2.4
+tzdata==2026.6
