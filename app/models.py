@@ -2,7 +2,7 @@ from datetime import datetime
 
 from typing import Any
 
-from sqlalchemy import DateTime, Integer, String, Text, JSON
+from sqlalchemy import DateTime, Integer, String, Text, JSON, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -44,3 +44,15 @@ class LearningMaterial(Base):
     fingerprint: Mapped[str] = mapped_column(String, nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class MaterialRevision(Base):
+    __tablename__ = "material_revisions"
+    __table_args__ = (UniqueConstraint("material_id", "revision"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("learning_materials.id"), index=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    source_html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(String, nullable=False)

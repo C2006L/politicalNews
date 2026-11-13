@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.materials import sync_materials
 from app.material_status import pipeline_status
-from app.models import LearningMaterial
+from app.models import LearningMaterial, MaterialRevision
 
 router = APIRouter(tags=["公众号研读"])
 
@@ -25,16 +25,45 @@ def learning_status() -> dict[str, Any]:
 
 
 def material_dict(m: LearningMaterial) -> dict[str, Any]:
-    return {"id": m.id, "title": m.title, "account": m.account, "url": m.url,
-            "imported_at": m.imported_at.isoformat() + "Z", **m.payload}
+    with SessionLocal() as db:
+        latest = db.query(MaterialRevision).filter_by(material_id=m.id).order_by(MaterialRevision.revision.desc()).first()
+        revision = latest.revision if latest else None
+        snap: dict[str, Any] = latest.snapshot if latest else {"title": m.title, "account": m.account, "url": m.url,
+                                              "payload": m.payload, "imported_at": m.imported_at.isoformat() + "Z"}
+        return {"id": m.id, "title": snap["title"], "account": snap["account"], "url": snap["url"],
+                "imported_at": snap["imported_at"], **snap["payload"], "revision": revision,
+                "version_url": f"{get_settings().base_path}/learning/{m.id}?revision={revision}" if revision else None}
 
 
-def find_material(material_id: int) -> dict[str, Any]:
+def find_material(material_id: int, revision: int | None = None) -> dict[str, Any]:
     with SessionLocal() as db:
         m = db.get(LearningMaterial, material_id)
         if m is None:
             raise HTTPException(404, "学习资料不存在")
-        return material_dict(m)
+        if revision is None:
+            return material_dict(m)
+        saved = db.query(MaterialRevision).filter_by(material_id=material_id, revision=revision).first()
+        if saved is None:
+            raise HTTPException(404, "资料版本不存在")
+        snap = saved.snapshot
+        return {"id": m.id, "title": snap["title"], "account": snap["account"], "url": snap["url"],
+                "imported_at": snap["imported_at"], **snap["payload"], "revision": revision,
+                "version_url": f"{get_settings().base_path}/learning/{m.id}?revision={revision}"}
+
+
+@router.get("/api/learning/{material_id}/revisions")
+def material_history(material_id: int) -> dict[str, Any]:
+    find_material(material_id)
+    with SessionLocal() as db:
+        versions = db.query(MaterialRevision).filter_by(material_id=material_id).order_by(MaterialRevision.revision.desc()).all()
+        return {"items": [{"revision": v.revision, "title": v.snapshot["title"],
+                           "imported_at": v.snapshot["imported_at"], "origin": v.origin}
+                          for v in versions]}
+
+
+@router.get("/api/learning/{material_id}/revisions/{revision}")
+def material_version(material_id: int, revision: int) -> dict[str, Any]:
+    return find_material(material_id, revision)
 
 
 @router.get("/api/learning")
@@ -95,10 +124,15 @@ def learning_page(account: str | None = None, page: int = Query(1, ge=1)) -> HTM
 
 
 @router.get("/learning/{material_id}", response_class=HTMLResponse)
-def learning_detail(material_id: int) -> HTMLResponse:
-    m = find_material(material_id)
+def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) -> HTMLResponse:
+    m = find_material(material_id, revision)
     base = escape(get_settings().base_path, quote=True)
     body = f'<a href="{base}/learning">← 公众号研读</a><p class="eyebrow">{escape(m["account"])}</p><h1>{escape(m["title"])}</h1>'
+    versions = material_history(material_id)["items"]
+    if versions:
+        body += f'<p class="learning-notice">当前查看版本 {m["revision"]} · '
+        body += ' / '.join(f'<a href="{base}/learning/{material_id}?revision={v["revision"]}">版本 {v["revision"]}</a>' for v in versions if v["revision"] != m["revision"])
+        body += f' · <a href="{base}/learning/{material_id}">最新内容</a></p>'
     body += f'<a href="{escape(m["url"], quote=True)}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>'
     body += bookmark('learning:' + str(m['id']), m['title'], get_settings().base_path + '/learning/' + str(m['id']))
     body += '<aside class="learning-notice"><strong>阅读前请注意</strong><ul>'

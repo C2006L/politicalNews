@@ -16,7 +16,8 @@ from bs4 import BeautifulSoup
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import LearningMaterial
+from app.models import LearningMaterial, MaterialRevision
+from app.revisions import append_revision
 from app.material_status import now_iso, write_status
 
 ACCOUNTS = {"MP_WXS_3243013434": "肖秀荣教授", "MP_WXS_3080503014": "考研政治徐涛"}
@@ -140,11 +141,14 @@ def _import_materials() -> dict[str, int]:
                 db.add(material)
                 result["added"] += 1
             else:
+                if not db.query(MaterialRevision.id).filter_by(material_id=material.id).first():
+                    append_revision(db, material)
                 result["updated"] += 1
             material.account = ACCOUNTS[account_id]
             material.title, material.url = title, url
             material.fingerprint, material.payload = fingerprint, payload
             material.imported_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            append_revision(db, material, html)
         db.commit()
     return result
 

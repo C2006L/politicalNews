@@ -85,7 +85,7 @@ python -m flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
 `/learning` 提供公众号考点摘录与折叠问答，`/api/learning` 和 `/api/learning/{id}` 提供结构化结果。每条内容保留原文段落编号、账号及链接；规则摘录不等于 AI 总结，不宣称已核对教材或完整覆盖音视频和图片。
 
-本地 WeRSS 目前订阅肖秀荣教授和考研政治徐涛。配置 `WERSS_DATABASE_PATH` 指向其 SQLite 数据库后，主项目只读导入白名单账号的文字正文，保存至独立 `learning_materials` 表。首次启动通过 `init_db()` 创建新表，不改变已有新闻字段；旧库使用前应备份。该桥接仅适用于两个服务能访问同一磁盘文件的部署，尚非通用远程 RSS 接口。
+本地 WeRSS 目前订阅肖秀荣教授和考研政治徐涛。配置 `WERSS_DATABASE_PATH` 指向其 SQLite 数据库后，主项目只读导入白名单账号的文字正文，保存至独立 `learning_materials` 表。启动通过 `init_db()` 执行版本化 SQLite 迁移；旧库升级前应备份。该桥接仅适用于两个服务能访问同一磁盘文件的部署，尚非通用远程 RSS 接口。
 
 本机启动：
 
@@ -93,7 +93,7 @@ python -m flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
 .\scripts\run_learning_local.ps1
 ```
 
-入口为 `http://127.0.0.1:8004/learning`。脚本先导入一次，然后随主服务每 15 分钟导入已采集内容；WeRSS 自身每两小时获取文章。关闭主项目调度器后不会自动导入。新增内容按来源 ID 去重，正文或标题变化时重新整理，当前版本不保存修改历史。
+入口为 `http://127.0.0.1:8004/learning`。脚本先导入一次，然后随主服务每 15 分钟导入已采集内容；WeRSS 自身每两小时获取文章。关闭主项目调度器后不会自动导入。新增内容按来源 ID 去重，正文或标题变化时重新整理，资料修订以递增版本保存，历史正文、标题和依据可回看。
 
 手动导入接口为 `POST /api/learning/sync`，必须配置 `SYNC_ADMIN_TOKEN` 并通过 `X-Sync-Token` 请求头提交令牌；未配置令牌时禁止该接口写入。也可在本地执行 `from app.materials import sync_materials; sync_materials()`。
 
@@ -106,3 +106,20 @@ python -m flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
 ## GitHub 发布开关
 
 推送 main 会执行检查。镜像发布必须配置仓库变量 `DOCKER_IMAGE`（自己的完整镜像仓库名）及 Docker Hub 凭据；不再使用原项目作者的镜像标签。服务器自动部署还需显式设置仓库变量 `AUTO_DEPLOY=true` 和 SSH 凭据。部署使用当前 GitHub 仓库 main，普通代码推送不默认代表服务器已经更新。
+
+
+## 数据库升级与学习资料版本
+
+当前数据库版本为 2。启动时按 `schema_migrations` 顺序升级；新库和原有无版本号数据库均适用。升级不改变新闻与学习资料 ID，较新且不受当前程序支持的数据库版本会拒绝启动。现阶段仅支持 SQLite。
+
+旧学习资料升级时保存为版本 1，标记 `legacy_snapshot`：可保留升级前已有的标题、结构化正文和依据，但无法恢复此前没有保存的原始 HTML。后续更正与正文快照在同一事务提交，导入失败不会留下半条修订；重复导入不增加版本。历史版本为只读。
+
+版本接口：`GET /api/learning/{id}/revisions`、`GET /api/learning/{id}/revisions/{revision}`。固定引用可使用 `/learning/{id}?revision=1#e-L1`，普通 `/learning/{id}` 和已有收藏仍打开最新内容。
+
+升级前执行（目标文件必须尚不存在）：
+
+```powershell
+python scripts/database_backup.py test.db backup-before-upgrade.db
+```
+
+恢复时先停止应用及后台写入，再将备份复制到一个新文件并把 `DATABASE_URL` 指向它。脚本使用 SQLite backup API 并检查完整性，禁止覆盖已有目标；不会自动执行破坏性的降级迁移。若需要回到升级前版本，应同时恢复对应应用版本与升级前备份。
