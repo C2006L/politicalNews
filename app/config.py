@@ -48,6 +48,9 @@ class Settings:
     base_path: str
     scheduler_enabled: bool = True
     werss_database_path: str = ""
+    werss_api_url: str = ''
+    werss_api_token_file: str = ''
+    werss_recovery_token_file: str = ''
 
 
 def get_settings() -> Settings:
@@ -61,4 +64,7 @@ def get_settings() -> Settings:
         base_path=_normalize_base_path(os.getenv("BASE_PATH", "")),
         scheduler_enabled=_truthy_env("SCHEDULER_ENABLED", "1"),
         werss_database_path=os.getenv("WERSS_DATABASE_PATH", "").strip(),
+        werss_api_url=os.getenv('WERSS_API_URL', '').strip(),
+        werss_api_token_file=os.getenv('WERSS_API_TOKEN_FILE', '').strip(),
+        werss_recovery_token_file=os.getenv('WERSS_RECOVERY_TOKEN_FILE', '').strip(),
     )

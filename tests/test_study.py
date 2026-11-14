@@ -55,6 +55,16 @@ class StudyTests(unittest.TestCase):
         self.assertIn("这里还没有阅读材料", html)
         self.assertNotIn('本页阅读进度', html)
         self.assertNotIn('class="reading-card"', html)
+        self.assertIn('/prefix/getting-started', html)
+
+    def test_empty_filter_does_not_claim_database_is_empty(self):
+        rows = [news(1, '党建理论学习')]
+        html = render_study(items=rows, today_items=rows, track='all', topic='science',
+                            page=1, base='/prefix', total=1, now=datetime(2026, 11, 12))
+        self.assertIn('当前主题暂无阅读材料', html)
+        self.assertIn('查看全部主题', html)
+        self.assertIn('/prefix/archive', html)
+        self.assertNotIn('资料库尚未获取新闻', html)
 
     def test_directory_and_cards_use_the_same_page(self):
         rows = [news(i, f"阅读材料 {i}") for i in range(1, 13)]

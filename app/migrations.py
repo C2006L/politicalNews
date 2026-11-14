@@ -5,7 +5,7 @@ from sqlalchemy import Engine, text, select
 
 from app.models import Base
 
-LATEST_VERSION = 3
+LATEST_VERSION = 6
 
 
 def migrate(engine: Engine) -> None:
@@ -36,6 +36,15 @@ def migrate(engine: Engine) -> None:
                 for name in ("knowledge_points", "knowledge_links"):
                     Base.metadata.tables[name].create(conn, checkfirst=True)
                 conn.execute(text("INSERT INTO schema_migrations VALUES (3,:at)"), {"at": datetime.now(timezone.utc).isoformat()})
+            if 4 not in applied:
+                Base.metadata.tables["news_knowledge_links"].create(conn, checkfirst=True)
+                conn.execute(text("INSERT INTO schema_migrations VALUES (4,:at)"), {"at": datetime.now(timezone.utc).isoformat()})
+            if 5 not in applied:
+                Base.metadata.tables['relation_review_events'].create(conn, checkfirst=True)
+                conn.execute(text("INSERT INTO schema_migrations VALUES (5,:at)"), {"at": datetime.now(timezone.utc).isoformat()})
+            if 6 not in applied:
+                Base.metadata.tables['body_recoveries'].create(conn, checkfirst=True)
+                conn.execute(text("INSERT INTO schema_migrations VALUES (6,:at)"), {"at": datetime.now(timezone.utc).isoformat()})
             conn.commit()
         except Exception:
             conn.rollback()

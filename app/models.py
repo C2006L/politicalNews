@@ -76,3 +76,43 @@ class KnowledgeLink(Base):
     evidence_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String, default="candidate", nullable=False)
     method: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class NewsKnowledgeLink(Base):
+    __tablename__ = "news_knowledge_links"
+    __table_args__ = (UniqueConstraint("point_id", "news_id", "fingerprint"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    point_id: Mapped[str] = mapped_column(ForeignKey("knowledge_points.id"), index=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("news.id"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="candidate", nullable=False)
+    method: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class RelationReviewEvent(Base):
+    __tablename__ = 'relation_review_events'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    link_id: Mapped[int] = mapped_column(Integer, index=True)
+    point_id: Mapped[str] = mapped_column(String, nullable=False)
+    previous: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class BodyRecovery(Base):
+    __tablename__ = 'body_recoveries'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    source_key: Mapped[str] = mapped_column(String, index=True)
+    source_id: Mapped[str] = mapped_column(String, index=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    state: Mapped[str] = mapped_column(String, index=True)
+    task_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -11,13 +11,13 @@ def header(base: str, active: str) -> str:
         f'{"aria-current=\"page\"" if key == active else ""} href="{base}{path}">{label}</a>'
         for key, path, label in tabs)
     return f'''<header class="mast site-mast"><a class="brand" href="{base}/"><b aria-hidden="true">时</b>时政自习室</a>
-<nav aria-label="主导航">{links}</nav><button class="library-toggle collection" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="library">我的收藏 <span data-save-count>0</span></button></header>'''
+<nav aria-label="主导航">{links}</nav><div class="mast-tools"><a href="{base}/search" aria-label="统一检索">检索</a><button class="library-toggle collection" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="library">我的收藏 <span data-save-count>0</span></button></div></header><script src="{base}/static/practice.js" data-practice-script data-base="{base}" defer></script>'''
 
 
-def collection() -> str:
-    return '''<dialog id="library" class="library-dialog" aria-labelledby="library-title">
+def collection(base: str = '') -> str:
+    return f'''<dialog id="library" class="library-dialog" aria-labelledby="library-title">
 <div class="library-heading"><div><span class="eyebrow">SAVED FOR LATER</span><h2 id="library-title">我的收藏</h2></div><button type="button" data-close-library aria-label="关闭收藏">关闭 ×</button></div>
-<p class="library-note">保存在当前浏览器，方便下次回看。</p><ul data-saved-list></ul>
+<p class="library-note">保存在当前浏览器，方便下次回看。</p><p><a href="{escape(base, quote=True)}/practice">我的复习 →</a></p><ul data-saved-list></ul>
 </dialog><div class="toast" role="status" aria-live="polite" hidden></div>'''
 
 

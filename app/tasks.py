@@ -21,4 +21,10 @@ def setup_scheduler() -> BackgroundScheduler:
     if settings.werss_database_path:
         scheduler.add_job("app.materials:sync_materials", "interval", minutes=15,
                           id="werss_materials_import", max_instances=1, coalesce=True)
+    if settings.werss_api_url and settings.werss_api_token_file:
+        scheduler.add_job('app.upstream:run_check', 'interval', hours=2,
+                          id='werss_channel_check', max_instances=1, coalesce=True)
+    if settings.werss_api_url and settings.werss_recovery_token_file and settings.werss_database_path:
+        scheduler.add_job('app.body_recovery:run', 'interval', minutes=1,
+                          id='werss_body_recovery', max_instances=1, coalesce=True)
     return scheduler

@@ -16,6 +16,9 @@ os.environ["AUTO_SYNC_ON_STARTUP"] = "0"
 os.environ["BOOTSTRAP_RECENT_NEWS_ON_STARTUP"] = "0"
 os.environ["SCHEDULER_ENABLED"] = "0"
 os.environ["WERSS_DATABASE_PATH"] = ""
+os.environ['WERSS_API_URL'] = ''
+os.environ['WERSS_API_TOKEN_FILE'] = ''
+os.environ['WERSS_RECOVERY_TOKEN_FILE'] = ''
 os.environ["EXPOSE_API_DOCS"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -50,6 +53,9 @@ def isolated_runtime(monkeypatch):
     monkeypatch.setenv("BOOTSTRAP_RECENT_NEWS_ON_STARTUP", "0")
     monkeypatch.setenv("SCHEDULER_ENABLED", "0")
     monkeypatch.setenv("WERSS_DATABASE_PATH", "")
+    monkeypatch.setenv('WERSS_API_URL', '')
+    monkeypatch.setenv('WERSS_API_TOKEN_FILE', '')
+    monkeypatch.setenv('WERSS_RECOVERY_TOKEN_FILE', '')
     monkeypatch.setenv("EXPOSE_API_DOCS", "1")
     import app.sync_service as sync
     def no_worker(*args, **kwargs):

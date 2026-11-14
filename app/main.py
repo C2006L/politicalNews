@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.database import init_db
 from app.news_data import count_news_records
-from app.routers import news_api, sync_routes, web, learning, knowledge
+from app.routers import news_api, sync_routes, web, learning, knowledge, onboarding, review, practice, material_import, upstream, body_recovery, search
 from app.sync_service import (
     reset_stale_sync_state,
     start_background_sync,
@@ -29,14 +29,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
     from app.knowledge import rebuild_links
     rebuild_links()
+    from app.news_knowledge import rebuild_news_links
+    rebuild_news_links()
     from app.material_status import recover_import
     recover_import()
+    from app.body_recovery import recover_interrupted
+    recover_interrupted()
     reset_stale_sync_state()
     settings = get_settings()
     scheduler = setup_scheduler() if settings.scheduler_enabled else None
     if scheduler is not None:
         scheduler.start()
         logger.info("定时任务调度器已启动")
+        from app.upstream import configured, status, start_check
+        if configured():
+            current_check = status()
+            if not current_check.get('fresh') and not current_check['retry_after_seconds']:
+                start_check()
 
     try:
         db_is_empty = count_news_records() == 0
@@ -85,6 +94,13 @@ def create_app() -> FastAPI:
     application.include_router(sync_routes.router)
     application.include_router(learning.router)
     application.include_router(knowledge.router)
+    application.include_router(onboarding.router)
+    application.include_router(review.router)
+    application.include_router(practice.router)
+    application.include_router(material_import.router)
+    application.include_router(upstream.router)
+    application.include_router(body_recovery.router)
+    application.include_router(search.router)
     application.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
     return application
 

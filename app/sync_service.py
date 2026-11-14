@@ -207,6 +207,45 @@ def reset_stale_sync_state() -> None:
         )
 
 
+def _initialize_sync(scope: str, background: bool = True) -> None:
+    try:
+        set_app_state('sync_in_progress', '1')
+        set_app_state('sync_scope', scope)
+        set_app_state('sync_started_at', _utc_now_str())
+        set_app_state('sync_finished_at', '')
+        set_app_state('sync_message', f'{scope}{"后台任务已启动" if background else "进行中"}，请稍候。')
+    except Exception:
+        try:
+            set_app_state('sync_in_progress', '0')
+        except Exception:
+            logger.exception('Could not clear incomplete sync initialization')
+        finally:
+            SYNC_LOCK.release()
+        raise
+
+
+def _finish_sync(events: List[Dict[str, Any]], alerts: List[str]) -> None:
+    try:
+        for save in (lambda: _update_source_health(events), lambda: _save_source_alerts(alerts),
+                     lambda: set_app_state('sync_finished_at', _utc_now_str()),
+                     lambda: set_app_state('sync_in_progress', '0')):
+            try:
+                save()
+            except Exception:
+                logger.exception('Could not persist sync completion state')
+    finally:
+        SYNC_LOCK.release()
+
+
+def _abort_sync(scope: str) -> None:
+    try:
+        set_app_state('sync_message', f'{scope}后台任务启动失败。')
+    except Exception:
+        logger.exception('Could not persist sync startup failure')
+    finally:
+        _finish_sync([], [])
+
+
 def _run_background_sync(
     scope_label: str,
     year: Optional[int] = None,
@@ -240,11 +279,7 @@ def _run_background_sync(
         logger.exception("Background sync failed: %s", exc)
         set_app_state("sync_message", f"{scope_label}后台回填失败：{exc}")
     finally:
-        _update_source_health(source_events)
-        _save_source_alerts(source_alerts)
-        set_app_state("sync_finished_at", _utc_now_str())
-        set_app_state("sync_in_progress", "0")
-        SYNC_LOCK.release()
+        _finish_sync(source_events, source_alerts)
 
 
 def month_batches(total_months: int, batch_size: int = 3) -> List[Tuple[datetime, datetime, int]]:
@@ -327,11 +362,7 @@ def _run_batched_backfill(
         logger.exception("Batched backfill failed: %s", exc)
         set_app_state("sync_message", f"{scope_label}后台回填失败：{exc}")
     finally:
-        _update_source_health(source_events)
-        _save_source_alerts(source_alerts)
-        set_app_state("sync_finished_at", _utc_now_str())
-        set_app_state("sync_in_progress", "0")
-        SYNC_LOCK.release()
+        _finish_sync(source_events, source_alerts)
 
 
 def run_sync_now(
@@ -344,11 +375,7 @@ def run_sync_now(
     if not SYNC_LOCK.acquire(blocking=False):
         return None
 
-    set_app_state("sync_in_progress", "1")
-    set_app_state("sync_scope", scope_label)
-    set_app_state("sync_started_at", _utc_now_str())
-    set_app_state("sync_finished_at", "")
-    set_app_state("sync_message", f"{scope_label}进行中，请稍候。")
+    _initialize_sync(scope_label, background=False)
     source_alerts: List[str] = []
     source_events: List[Dict[str, Any]] = []
 
@@ -377,11 +404,7 @@ def run_sync_now(
         set_app_state("sync_message", f"{scope_label}失败：{exc}")
         raise
     finally:
-        _update_source_health(source_events)
-        _save_source_alerts(source_alerts)
-        set_app_state("sync_finished_at", _utc_now_str())
-        set_app_state("sync_in_progress", "0")
-        SYNC_LOCK.release()
+        _finish_sync(source_events, source_alerts)
 
 
 def run_scheduled_sync(months: int = 1, max_pages: int = 12, max_items: int = 80) -> Dict[str, int]:
@@ -403,11 +426,7 @@ def start_background_sync(
     if not SYNC_LOCK.acquire(blocking=False):
         return False
 
-    set_app_state("sync_in_progress", "1")
-    set_app_state("sync_scope", scope_label)
-    set_app_state("sync_started_at", _utc_now_str())
-    set_app_state("sync_finished_at", "")
-    set_app_state("sync_message", f"{scope_label}后台回填已启动，请稍候刷新进度。")
+    _initialize_sync(scope_label)
 
     try:
         worker = threading.Thread(
@@ -424,10 +443,7 @@ def start_background_sync(
         worker.start()
         return True
     except Exception:
-        set_app_state("sync_in_progress", "0")
-        set_app_state("sync_finished_at", _utc_now_str())
-        set_app_state("sync_message", f"{scope_label}后台任务启动失败。")
-        SYNC_LOCK.release()
+        _abort_sync(scope_label)
         raise
 
 
@@ -437,11 +453,7 @@ def start_batched_backfill(
     if not SYNC_LOCK.acquire(blocking=False):
         return False
 
-    set_app_state("sync_in_progress", "1")
-    set_app_state("sync_scope", scope_label)
-    set_app_state("sync_started_at", _utc_now_str())
-    set_app_state("sync_finished_at", "")
-    set_app_state("sync_message", f"{scope_label}后台回填已启动，请稍候刷新进度。")
+    _initialize_sync(scope_label)
 
     try:
         worker = threading.Thread(
@@ -457,8 +469,5 @@ def start_batched_backfill(
         worker.start()
         return True
     except Exception:
-        set_app_state("sync_in_progress", "0")
-        set_app_state("sync_finished_at", _utc_now_str())
-        set_app_state("sync_message", f"{scope_label}后台任务启动失败。")
-        SYNC_LOCK.release()
+        _abort_sync(scope_label)
         raise

@@ -63,15 +63,15 @@ def test_search_page_supports_year_only_filter(client):
     """测试只选择年份也能返回搜索结果页"""
     response = client.get("/search?year=2025")
     assert response.status_code == 200
-    assert "当前默认在 2025 年范围内搜索标题、摘要、正文、来源和发布日期。" in response.text
+    assert 'value="2025"' in response.text
+    assert '公众号资料' in response.text
 
 
-def test_search_defaults_to_current_year(client):
-    """测试搜索框默认选中当前年份"""
-    current_year = datetime.now(ZoneInfo("Asia/Shanghai")).year
+def test_search_defaults_to_all_years(client):
+    """统一检索默认不隐藏旧资料。"""
     response = client.get("/search")
     assert response.status_code == 200
-    assert f"<option value='{current_year}' selected>" in response.text
+    assert '默认覆盖全部年份' in response.text
 
 
 def test_year_pages(client):
@@ -175,7 +175,7 @@ def test_news_detail_page(client, monkeypatch):
 
     response = client.get("/news/1")
     assert response.status_code == 200
-    assert "站内详情" in response.text
+    assert "新闻研读" in response.text
     assert "测试时政标题" in response.text
     assert "人民网" in response.text
 

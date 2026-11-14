@@ -13,6 +13,7 @@ from urllib.parse import urlencode, urlparse
 from app.models import News
 from app.chrome import header, collection
 from app.news_data import source_label
+from app.news_knowledge import render_news_points
 
 TRACKS = {"all": "综合阅读", "postgrad": "考研政治", "civil": "公考常识", "essay": "申论面试"}
 TOPICS = {
@@ -106,6 +107,7 @@ def article_card(reading: Reading, index: int, track: str, base: str) -> str:
       <h3><a href="{detail}">{escape(item.title)}</a></h3>
       <p class="excerpt">{escape(excerpt)}</p>
       <details class="evidence"><summary>{len(set(a.source for a in reading.articles))} 个刊载来源 · 查看依据</summary><p>{escape('；'.join(reading.reasons))}。同标题稿件合并，来源数不等于独立报道数。</p><div class="source-links">{' '.join(sources)}</div></details>
+      {render_news_points(item, base)}
       <div class="card-actions actions"><button type="button" data-action="read" aria-pressed="false">标为已读</button><button type="button" data-action="save" aria-pressed="false">收藏</button><a class="detail-link read-source" href="{detail}">阅读全文 ↗</a></div>
       </div>
     </article>'''
@@ -128,7 +130,15 @@ def render_study(*, items: Sequence[News], today_items: Sequence[News], track: s
     topic_links = ''.join(f'<a class="topic {"active" if key == topic else ""}" href="{href(base, "/today", track=track, topic=key, source=source)}">{name}</a>' for key, name in topics.items())
     cards = ''.join(article_card(reading, (page - 1) * 10 + idx, track, base) for idx, reading in enumerate(current, 1))
     if not cards:
-        cards = '<div class="empty-state"><h3>这里还没有阅读材料</h3><p>可切换主题或备考方向。若资料库为空，请稍后刷新，或前往同步状态查看采集进度。</p></div>'
+        if total == 0:
+            cards = ('<div class="empty-state"><h3>这里还没有阅读材料</h3>'
+                     '<p>资料库尚未获取新闻。请先获取近期内容，再开始阅读。</p>'
+                     f'<a href="{href(base, "/getting-started")}">获取第一批资料 →</a></div>')
+        else:
+            cards = ('<div class="empty-state"><h3>当前主题暂无阅读材料</h3>'
+                     '<p>资料库已有内容，当前日期或筛选条件没有匹配项。</p>'
+                     f'<a href="{href(base, "/today", track=track, topic="all")}">查看全部主题 →</a> · '
+                     f'<a href="{href(base, "/archive")}">查看往期资料 →</a></div>')
     pager = ''.join(f'<a {"aria-current=\"page\"" if number == page else ""} href="{href(base, "/today", page=number, track=track, topic=topic, source=source)}">{number}</a>' for number in range(max(1, page - 2), min(pages, page + 2) + 1)) if pages > 1 else ''
     latest_text = max((item.published_at for item in pool), default=None)
     edition = latest_text or now
@@ -138,7 +148,7 @@ def render_study(*, items: Sequence[News], today_items: Sequence[News], track: s
         for idx, reading in enumerate(current, 1)
     )
     substitutions = {
-        "site_header": header(base, "today"), "site_library": collection(),
+        "site_header": header(base, "today"), "site_library": collection(base),
         "base": escape(base, quote=True), "date": now.strftime("%Y.%m.%d"),
         "weekday": "星期" + "一二三四五六日"[now.weekday()], "tracks": track_links,
         "topics": topic_links, "cards": cards, "pager": pager,

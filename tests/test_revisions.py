@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from app.database import SessionLocal
-from app.migrations import migrate
+from app.migrations import migrate, LATEST_VERSION
 from app.models import News, AppState, LearningMaterial, MaterialRevision
 from app.materials import sync_materials
 from scripts.database_backup import backup
@@ -29,7 +29,7 @@ def test_legacy_database_upgrade_and_restore(tmp_path):
         with engine.connect() as conn:
             assert conn.execute(text('select count(*) from material_revisions')).scalar() == 1
             assert conn.execute(text('select material_id from material_revisions')).scalar() == 42
-            assert conn.execute(text('select max(version) from schema_migrations')).scalar() == 3
+            assert conn.execute(text('select max(version) from schema_migrations')).scalar() == LATEST_VERSION
         backup(tmp_path / 'before.db', tmp_path / 'restored.db')
         restored = create_engine('sqlite:///' + (tmp_path / 'restored.db').as_posix())
         try:
@@ -53,7 +53,7 @@ def test_newer_schema_is_rejected_without_modification(tmp_path):
         with pytest.raises(ValueError, match='newer'):
             migrate(engine)
         with engine.connect() as conn:
-            assert conn.execute(text('select count(*) from schema_migrations')).scalar() == 4
+            assert conn.execute(text('select count(*) from schema_migrations')).scalar() == LATEST_VERSION + 1
     finally:
         engine.dispose()
 

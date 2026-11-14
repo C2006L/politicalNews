@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import closing
 
 import hashlib
+import json
 import re
 import sqlite3
 import threading
@@ -16,19 +17,25 @@ from bs4 import BeautifulSoup
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import LearningMaterial, MaterialRevision
+from app.models import LearningMaterial, MaterialRevision, AppState
 from app.revisions import append_revision
-from app.material_status import now_iso, write_status
+from app.material_status import now_iso, write_status, parse_scan
 
 ACCOUNTS = {"MP_WXS_3243013434": "肖秀荣教授", "MP_WXS_3080503014": "考研政治徐涛"}
 EXTRACTOR_VERSION = "rules-2"
 LOCK = threading.Lock()
+SCAN_KEY = 'learning_import_scan_v1'
+BATCH_SIZE = 200
 
 
 class ContentError(ValueError):
     def __init__(self, reason: str):
         self.reason = reason
         super().__init__(reason)
+
+
+class ImportBusy(ValueError):
+    pass
 
 
 def extract_material(html: str) -> dict[str, Any]:
@@ -100,23 +107,49 @@ def extract_material(html: str) -> dict[str, Any]:
                          "article_list": "latest_only_not_complete"}}
 
 
-def _import_materials() -> dict[str, int]:
+def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
     """Import only the two selected accounts; never write to WeRSS's database."""
     configured = get_settings().werss_database_path
     if not configured:
         raise ValueError("请配置 WERSS_DATABASE_PATH")
     path = Path(configured).resolve(strict=True)
-    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)) as source:
-        rows = source.execute(
-            "SELECT id,mp_id,title,url,content_html FROM articles "
-            "WHERE mp_id IN (?,?) AND has_content=1 ORDER BY create_time DESC LIMIT 200",
-            tuple(ACCOUNTS),
-        ).fetchall()
     result = {"added": 0, "updated": 0, "skipped": 0, "rejected": 0,
-              "verification_required": 0, "insufficient_text": 0, "invalid_record": 0}
+              "verification_required": 0, "insufficient_text": 0, "invalid_record": 0,
+              "scanned": 0, "remaining": 0}
     with SessionLocal() as db:
+        checkpoint = db.get(AppState, SCAN_KEY)
+        scan = parse_scan(checkpoint.value if checkpoint else None)
+        source_key = hashlib.sha256(str(path).encode()).hexdigest()
+        if scan.get('source_key') != source_key:
+            scan = {'source_key': source_key}
+        after = scan.get('after')
+        # Keyset traversal is independent of source timestamps. New/edited rows
+        # behind the cursor are revisited next cycle, not permanently excluded.
+        with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=5)) as source:
+            source.execute('BEGIN')
+            def batch(cursor: str | None) -> list[Any]:
+                return source.execute(
+                    'SELECT CAST(id AS TEXT),mp_id,title,url,content_html FROM articles '
+                    'WHERE mp_id IN (?,?) AND has_content=1 '
+                    'AND (? IS NULL OR CAST(id AS TEXT)>?) '
+                    'ORDER BY CAST(id AS TEXT) COLLATE BINARY LIMIT ?',
+                    (*ACCOUNTS, cursor, cursor, BATCH_SIZE + 1)).fetchall()
+            peek = (batch(after) if only_source_id is None else source.execute(
+                'SELECT CAST(id AS TEXT),mp_id,title,url,content_html FROM articles '
+                'WHERE mp_id IN (?,?) AND has_content=1 AND CAST(id AS TEXT)=?',
+                (*ACCOUNTS, only_source_id)).fetchall())
+            if only_source_id is None and after is not None and not peek:
+                scan = {'source_key': source_key}
+                peek = batch(None)
+            rows = peek[:BATCH_SIZE]
+            last = rows[-1][0] if rows else None
+            if len(peek) > BATCH_SIZE:
+                result['remaining'] = source.execute(
+                    'SELECT COUNT(*) FROM articles WHERE mp_id IN (?,?) AND has_content=1 AND CAST(id AS TEXT)>?',
+                    (*ACCOUNTS, last)).fetchone()[0]
+        result['scanned'] = len(rows)
         for source_id, account_id, title, url, html in rows:
-            if not isinstance(title, str) or not isinstance(url, str) or not isinstance(html, str):
+            if not source_id or not isinstance(title, str) or not isinstance(url, str) or not isinstance(html, str):
                 result["rejected"] += 1
                 result["invalid_record"] += 1
                 continue
@@ -149,26 +182,55 @@ def _import_materials() -> dict[str, int]:
             material.fingerprint, material.payload = fingerprint, payload
             material.imported_at = datetime.now(timezone.utc).replace(tzinfo=None)
             append_revision(db, material, html)
+        if only_source_id is None:
+            scan['cycle_scanned'] = scan.get('cycle_scanned', 0) + result['scanned']
+            scan['cycle_rejected'] = scan.get('cycle_rejected', 0) + result['rejected']
+            scan['after'] = last if result['remaining'] else None
+            scan['remaining'] = result['remaining']
+            if not result['remaining']:
+                scan.update(last_cycle_finished_at=now_iso(), last_cycle_scanned=scan['cycle_scanned'],
+                            last_cycle_rejected=scan['cycle_rejected'], cycle_scanned=0, cycle_rejected=0)
+            if checkpoint is None:
+                db.add(AppState(key=SCAN_KEY, value=json.dumps(scan)))
+            else:
+                checkpoint.value = json.dumps(scan)
+        # Material versions, associations and cursor advance commit together.
         db.commit()
     return result
+
+
+def import_recovered(source_id: str) -> dict[str, int]:
+    if not LOCK.acquire(blocking=False):
+        raise ImportBusy('资料导入任务正在运行')
+    try:
+        return _import_materials(only_source_id=source_id)
+    finally:
+        LOCK.release()
 
 
 
 def sync_materials() -> dict[str, int]:
     if not LOCK.acquire(blocking=False):
-        raise ValueError("已有公众号导入任务在运行")
+        raise ImportBusy("已有公众号导入任务在运行")
     try:
-        write_status(state="running", started_at=now_iso(), finished_at=None, error=None)
+        write_status(state="running", started_at=now_iso(), finished_at=None, error=None, error_detail=None, result={})
         try:
             result = _import_materials()
-        except (OSError, sqlite3.Error, ValueError):
-            write_status(state="failed", finished_at=now_iso(), error="source_unavailable")
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            detail = ('not_configured' if not get_settings().werss_database_path else
+                      'source_missing' if isinstance(exc, FileNotFoundError) else
+                      'source_busy' if isinstance(exc, sqlite3.OperationalError) and
+                      getattr(exc, 'sqlite_errorcode', None) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) else
+                      'source_schema' if isinstance(exc, sqlite3.OperationalError) and
+                      ('no such table' in str(exc) or 'no such column' in str(exc)) else 'source_unreadable')
+            write_status(state="failed", finished_at=now_iso(), error="source_unavailable", error_detail=detail)
             raise
         except Exception:
             write_status(state="failed", finished_at=now_iso(), error="import_failed")
             raise
         stamp = now_iso()
-        state = "partial" if result["rejected"] else "updated" if result["added"] + result["updated"] else "no_new_materials"
+        state = ("partial" if result["rejected"] else "catching_up" if result['remaining'] else
+                 "updated" if result["added"] + result["updated"] else "no_new_materials")
         changes: dict[str, Any] = dict(state=state, finished_at=stamp, result=result, error=None)
         if not result["rejected"]:
             changes["last_success_at"] = stamp

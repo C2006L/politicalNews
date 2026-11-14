@@ -1,7 +1,6 @@
 """Learning material views; external content is always rendered as escaped text."""
 from __future__ import annotations
 
-import secrets
 import sqlite3
 from html import escape
 from typing import Any
@@ -12,9 +11,11 @@ from fastapi.responses import HTMLResponse
 from app.chrome import header, collection, bookmark
 from app.config import get_settings
 from app.database import SessionLocal
-from app.materials import sync_materials
+from app.materials import sync_materials, ImportBusy
 from app.material_status import pipeline_status
 from app.knowledge import material_points
+from app.practice import add_button
+from app.review import require_token, password_configured
 from app.models import LearningMaterial, MaterialRevision
 
 router = APIRouter(tags=["公众号研读"])
@@ -86,23 +87,24 @@ def get_material(material_id: int) -> dict[str, Any]:
 @router.post("/api/learning/sync")
 def import_materials(x_sync_token: str | None = Header(None)) -> dict[str, int]:
     required = get_settings().sync_admin_token
-    if not required:
-        raise HTTPException(503, "请先配置 SYNC_ADMIN_TOKEN；也可使用本地导入命令")
-    if not secrets.compare_digest(x_sync_token or "", required):
-        raise HTTPException(403, "需要管理员令牌")
+    if not required and not password_configured():
+        raise HTTPException(503, "请先在本机设置管理口令，或配置 SYNC_ADMIN_TOKEN")
+    require_token(x_sync_token)
     try:
         return sync_materials()
+    except ImportBusy:
+        raise HTTPException(409, '已有资料导入任务在运行，请稍候') from None
     except (ValueError, OSError, sqlite3.Error) as exc:
         raise HTTPException(503, "公众号资料源未就绪，请检查本地配置") from exc
 
 
-def layout(title: str, body: str) -> HTMLResponse:
+def layout(title: str, body: str, active: str = 'learning') -> HTMLResponse:
     base = escape(get_settings().base_path, quote=True)
     return HTMLResponse(f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)} · 时政自习室</title>
 <link rel="stylesheet" href="{base}/static/study.css?v=4"><link rel="stylesheet" href="{base}/static/learning.css"><script src="{base}/static/study.js?v=4" defer></script></head>
-<body>{header(get_settings().base_path, "learning")}
-<main class="learning-page">{body}</main>{collection()}</body></html>''')
+<body>{header(get_settings().base_path, active)}
+<main class="learning-page">{body}</main>{collection(get_settings().base_path)}</body></html>''')
 
 
 @router.get("/learning", response_class=HTMLResponse)
@@ -110,14 +112,14 @@ def learning_page(account: str | None = None, page: int = Query(1, ge=1)) -> HTM
     data = list_materials(account, page)
     base = escape(get_settings().base_path, quote=True)
     body = '<div class="eyebrow">THE STUDY NOTES</div><h1>公众号研读</h1><p class="learning-notice">考点摘录与自测问答 · 规则整理，尚未人工审核；保留原文出处。</p>'
-    body += f'<p><a href="{base}/knowledge">按考点研读 →</a></p>'
+    body += f'<p><a href="{base}/knowledge">按考点研读 →</a> · <a href="{base}/practice">我的复习 →</a> · <a href="{base}/learning-import">检查资料导入 →</a></p>'
     for m in data["items"]:
         body += f'''<article class="learning-entry"><div class="meta">{escape(m['account'])}</div>
 <h2><a href="{base}/learning/{m['id']}">{escape(m['title'])}</a></h2>
 <p>{len(m['points'])} 条考点摘录 · {len(m['questions'])} 条自测问答</p>
 <p>{escape(m['topic'])}</p>{bookmark("learning:" + str(m["id"]), m["title"], get_settings().base_path + "/learning/" + str(m["id"]))} <a href="{base}/learning/{m['id']}">查看考点与依据 →</a></article>'''
     if not data["items"]:
-        body += '<p>暂无已整理资料。配置公众号资料源并完成导入后将在此显示。</p>'
+        body += f'<p>暂无已整理资料。配置公众号资料源并完成导入后将在此显示。</p><p><a href="{base}/getting-started">准备学习资料 →</a></p>'
     if page > 1:
         body += f'<a href="?page={page - 1}">上一页</a> '
     if page * 20 < data["total"]:
@@ -129,7 +131,7 @@ def learning_page(account: str | None = None, page: int = Query(1, ge=1)) -> HTM
 def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) -> HTMLResponse:
     m = find_material(material_id, revision)
     base = escape(get_settings().base_path, quote=True)
-    body = f'<a href="{base}/learning">← 公众号研读</a><p class="eyebrow">{escape(m["account"])}</p><h1>{escape(m["title"])}</h1>'
+    body = f'<a href="{base}/learning">← 公众号研读</a> · <a href="{base}/practice">我的复习 →</a><p class="eyebrow">{escape(m["account"])}</p><h1>{escape(m["title"])}</h1>'
     related = material_points(material_id, m.get('revision'))
     if related:
         body += '<p>关联考点：' + ' · '.join(
@@ -148,19 +150,19 @@ def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) 
     if m['points']:
         body += '<h2>考点摘录</h2>'
         section = ''
-        for point in m['points']:
+        for index, point in enumerate(m['points']):
             if point['section'] != section:
                 section = point['section']
                 body += '<h3>' + escape(section) + '</h3>'
             refs = ' '.join(f'<a href="#e-{escape(r)}">{escape(r)}</a>' for r in point['evidence'])
-            body += f'<p>{escape(point["text"])} <small>{refs}</small></p>'
+            body += f'<p>{escape(point["text"])} <small>{refs}</small></p>' + add_button(material_id, m['revision'], 'points', index)
     if m['questions']:
         body += '<h2>先回想，再展开答案</h2>'
-        for q in m['questions']:
+        for index, q in enumerate(m['questions']):
             badge = ' · 原作者重点标记' if q['starred_by_author'] else ''
             badge += ' · 待核对' if q['needs_review'] else ''
             refs = ' '.join(f'<a href="#e-{escape(r)}">{escape(r)}</a>' for r in q['evidence'])
-            body += f'<details class="learning-question"><summary>{q["number"]}. {escape(q["question"])}{badge}</summary><p>{escape(q["answer"])}</p><small>原文依据：{refs}</small></details>'
+            body += f'<details class="learning-question"><summary>{q["number"]}. {escape(q["question"])}{badge}</summary><p>{escape(q["answer"])}</p><small>原文依据：{refs}</small></details>' + add_button(material_id, m['revision'], 'questions', index)
     cited = {ref for p in m['points'] + m['questions'] for ref in p['evidence']}
     body += '<details class="learning-evidence"><summary>查看上述内容的原文依据</summary>'
     body += ''.join(f'<p id="e-{escape(line["id"])}"><small>{escape(line["id"])}</small> {escape(line["text"])}</p>' for line in m['evidence'] if line['id'] in cited)

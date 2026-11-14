@@ -1038,6 +1038,7 @@ def fetch_news(year: int | None = None, months: int = 12, max_pages: int | None 
 
 
 def save_news_to_db(news_items: List[Dict[str, Any]]) -> int:
+    from app.news_knowledge import link_news
     db = SessionLocal()
     saved_count = 0
 
@@ -1054,6 +1055,7 @@ def save_news_to_db(news_items: List[Dict[str, Any]]) -> int:
                 existing_news.source = item["source"]
                 existing_news.category = item["category"]
                 _index_news_safely(db, existing_news.id, item)
+                link_news(db, existing_news)
                 continue
 
             news = News(
@@ -1071,6 +1073,7 @@ def save_news_to_db(news_items: List[Dict[str, Any]]) -> int:
             db.add(news)
             db.flush()
             _index_news_safely(db, news.id, item)
+            link_news(db, news)
             saved_count += 1
 
         db.commit()

@@ -84,6 +84,7 @@ def point_evidence(db: Session, point_id: str, history: bool = False) -> list[di
         snap = revision.snapshot
         item = snap["payload"][link.kind][link.item_index]
         rows.append({"id": link.id, "material_id": revision.material_id, "revision": revision.revision,
+                     "item_index": link.item_index,
                      "account": snap["account"], "title": snap["title"], "original_url": snap["url"],
                      "status": link.status, "method": link.method, "kind": link.kind, "item": item, "is_current": is_current,
                      "evidence": [line for line in snap["payload"]["evidence"] if line["id"] in link.evidence_ids]})

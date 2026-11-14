@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
@@ -13,6 +14,19 @@ from app.database import SessionLocal
 from app.models import AppState
 
 KEY = "learning_import_status"
+
+
+def parse_scan(raw: str | None) -> dict[str, Any]:
+    try:
+        value = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(value, dict) or (value.get('after') is not None and not isinstance(value['after'], str)):
+        return {}
+    for key in ('remaining', 'cycle_scanned', 'cycle_rejected', 'last_cycle_scanned', 'last_cycle_rejected'):
+        if key in value and (type(value[key]) is not int or value[key] < 0):
+            return {}
+    return value
 
 
 def now_iso() -> str:
@@ -43,7 +57,7 @@ def recover_import() -> None:
 
 
 def pipeline_status() -> dict[str, Any]:
-    from app.materials import ACCOUNTS
+    from app.materials import ACCOUNTS, SCAN_KEY, LOCK
     configured = get_settings().werss_database_path
     acquisition: dict[str, Any] = {
         "state": "unknown", "authorization": "unknown", "last_check_verified": False,
@@ -68,4 +82,21 @@ def pipeline_status() -> dict[str, Any]:
         except (OSError, sqlite3.Error):
             acquisition["state"] = "source_unavailable"
             acquisition["database_readable"] = False
-    return {"acquisition": acquisition, "import": read_status()}
+    with SessionLocal() as db:
+        row = db.get(AppState, SCAN_KEY)
+        saved = parse_scan(row.value if row else None)
+    try:
+        source_key = hashlib.sha256(str(Path(configured).resolve()).encode()).hexdigest() if configured else None
+    except (OSError, RuntimeError):
+        source_key = None
+    if source_key is None or saved.get('source_key') != source_key:
+        saved = {}
+    scan = {key: saved.get(key) for key in ('remaining', 'cycle_scanned', 'cycle_rejected',
+            'last_cycle_finished_at', 'last_cycle_scanned', 'last_cycle_rejected')}
+    imported = read_status()
+    if imported.get('state') == 'running' and not LOCK.locked():
+        imported = {**imported, 'state': 'interrupted', 'error': 'interrupted'}
+    from app.upstream import status as upstream_status
+    from app.body_recovery import status as recovery_status
+    return {"acquisition": acquisition, "import": imported, 'scan': scan, 'upstream_check': upstream_status(),
+            'body_recovery': recovery_status()}

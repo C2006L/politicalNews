@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.models import News
 from app.study import render_study
 from app.chrome import header, collection, bookmark
+from app.news_knowledge import render_news_points
 
 # 子路径部署前缀（如 /news），由环境变量 BASE_PATH 提供
 BASE_PATH = get_settings().base_path
@@ -431,6 +432,7 @@ def _render_learning_status() -> str:
     imported = data["import"]
     acquired = data["acquisition"]
     labels = {"not_run": "尚未导入", "running": "导入中", "interrupted": "上次导入中断",
+              "catching_up": "分批导入中，仍有待检查正文",
               "failed": "导入失败", "partial": "部分正文被拒绝", "updated": "已导入新内容",
               "no_new_materials": "本次无新增资料"}
     def display_time(value: object) -> str:
@@ -443,6 +445,11 @@ def _render_learning_status() -> str:
     source_label_text = {"unknown": "采集实时状态未确认", "not_configured": "未配置资料源",
                          "source_unavailable": "资料源暂不可读"}.get(acquired["state"], "未确认")
     counts = imported.get("result", {})
+    probe = data['upstream_check']
+    probe_label = {'not_configured':'未连接检查接口', 'not_checked':'尚未主动检查', 'running':'正在检查',
+                   'checked':'已完成上次检查', 'failed':'上次检查失败', 'interrupted':'上次检查中断'}.get(probe['state'], '未确认')
+    if probe['state'] == 'checked' and not probe['fresh']:
+        probe_label += '（结果已过时）'
     account_rows = ''.join(
         f'<div class="sync-item"><strong>{escape(a["name"])}</strong><span>已存 {a["articles"]} 篇 · 有文字 {a["with_text"]} 篇 · 待取正文 {a["awaiting_text"]} 篇</span></div>'
         for a in acquired["accounts"])
@@ -451,9 +458,10 @@ def _render_learning_status() -> str:
 <div class="sync-item"><strong>主项目导入</strong><span>{labels.get(imported["state"], "未知")}</span></div>
 <div class="sync-item"><strong>最近导入检查</strong><span>{display_time(imported.get("finished_at"))}</span></div>
 <div class="sync-item"><strong>最近成功检查</strong><span>{display_time(imported.get("last_success_at"))}</span></div>
-<div class="sync-item"><strong>最近新增或更正</strong><span>{display_time(imported.get("last_changed_at"))}</span></div>{account_rows}</div><p class="notice">采集通道目前仅保证尝试获取最新一篇，多篇更新和历史文章可能缺失。库文件可读不能证明授权有效，导入无新增不能证明公众号没有更新。</p>
+<div class="sync-item"><strong>最近新增或更正</strong><span>{display_time(imported.get("last_changed_at"))}</span></div>
+<div class="sync-item"><strong>主动通道检查</strong><span>{probe_label} · {display_time(probe.get('finished_at'))}</span></div>{account_rows}</div><p class="notice">采集通道目前仅保证尝试获取最新一篇，多篇更新和历史文章可能缺失。库文件可读不能证明授权有效，导入无新增不能证明公众号没有更新。主动检查仅针对最新文章入口，不验证正文和历史覆盖。</p>
 <p class="panel-subtitle">本次新增 {counts.get("added", 0)} · 更新 {counts.get("updated", 0)} · 跳过 {counts.get("skipped", 0)} · 拒绝 {counts.get("rejected", 0)}（验证页 {counts.get("verification_required", 0)}，正文不足 {counts.get("insufficient_text", 0)}）</p>
-<p class="panel-subtitle">文章来源时间尚未核实，导入时间不作为发布时间；图片与音频未完整处理。刷新页面可查看最新状态。</p></section>'''
+<p class="panel-subtitle">文章来源时间尚未核实，导入时间不作为发布时间；图片与音频未完整处理。刷新页面可查看最新状态。</p><p><a href="{_build_href('/learning-import')}">检查导入进度或重试 →</a></p></section>'''
 
 
 def _render_article_body(item: News) -> str:
@@ -632,7 +640,7 @@ def _render_layout(
               <select aria-label="检索年份" name="year">{_render_year_select(year_counts, current_year, selected_year)}</select>
               <button type="submit">搜索</button>
             </form>
-            <div class="toolbar-note">搜索只保留一个入口，默认按 {current_year} 年检索；要看同步情况，直接切到上方的同步状态页。</div>
+            <div class="toolbar-note">统一检索新闻、公众号资料与考点；此处年份仅限制新闻。</div>
           </div>
 
           <div class="stats">{stats_html}</div>
@@ -647,7 +655,7 @@ def _render_layout(
         </footer>
       </main>
 
-      {collection()}
+      {collection(BASE_PATH)}
       <script>
         async function refreshSyncStatus() {{
           const badge = document.getElementById('sync-badge');
@@ -1121,92 +1129,16 @@ async def year_detail_page(
 
 
 @router.get("/search", response_class=HTMLResponse)
-async def search_page(
-    q: Optional[str] = Query(default=None),
-    year: Optional[int] = Query(default=None),
-    source: Optional[str] = Query(default=None),
-    page: int = Query(default=1, ge=1),
+def search_page(
+    q: str = Query(default="", max_length=120),
+    year: str = Query(default="", pattern=r"^(?:19[0-9]{2}|20[0-9]{2}|21[0-9]{2}|2200)?$"),
+    source: Optional[str] = Query(default=None, max_length=80),
+    page: int = Query(default=1, ge=1, le=100000),
+    kind: str = Query(default="all", pattern="^(all|news|materials|knowledge)$"),
 ) -> HTMLResponse:
-    current_year = datetime.now(LOCAL_TZ).year
-    keyword = (q or "").strip()
-    search_year = year or current_year
-    items = []
-    source_counts: Dict[str, int] = {}
-    if keyword or year or source:
-        raw_items, _ = query_news(year=search_year, search=keyword or None, months=None)
-        source_counts = _source_counts(raw_items)
-        items = _filter_items_by_source(raw_items, source)
-    year_counts = get_year_counts(min_year=MIN_FILTER_YEAR)
-    recent_items, _ = query_news(year=None, search=None, months=24)
-    page_items, current_page, total_pages = _paginate_sequence(items, page, ITEMS_PER_PAGE)
-
-    subtitle = f"当前默认在 {search_year} 年范围内搜索标题、摘要、正文、来源和发布日期。"
-    if keyword:
-        subtitle = f"当前在 {search_year} 年范围内搜索关键词。"
-    elif source:
-        subtitle = f"当前只查看 {search_year} 年内来自 {source_label(source)} 的内容。"
-    if source and keyword:
-        subtitle += f" 当前来源筛选为 {source_label(source)}。"
-
-    main_html = (
-        "<section class='panel'>"
-        f"<div class='panel-head'><div><h2>搜索结果</h2><div class='panel-subtitle'>{escape(subtitle)}</div></div><span>{len(items)} 条</span></div>"
-        + _render_scroll_shell(
-            _render_news_stream(
-                page_items,
-                f"输入关键词后会默认搜索 {search_year} 年内容。"
-                if not (keyword or year or source)
-                else f"没有找到「{keyword or year or source_label(source)}」匹配的内容。",
-                keyword=keyword,
-            )
-        )
-        + _render_pager("/search", current_page, total_pages, q=keyword, year=year, source=source)
-        + "</section>"
-    )
-
-    side_html = (
-        "<section class='panel'>"
-        "<div class='panel-head'><div><h2>搜索提示</h2><div class='panel-subtitle'>一个输入框就够了，日期、会议、政策、人名都可以直接搜。</div></div></div>"
-        "<div class='helper-list'>"
-        "<span class='helper-chip'>例：中央政治局</span>"
-        "<span class='helper-chip'>例：政府工作报告</span>"
-        "<span class='helper-chip'>例：2025-03</span>"
-        "<span class='helper-chip'>例：2026-04-11</span>"
-        "</div>"
-        "</section>"
-        + _render_hot_keywords()
-        + _shared_sidebar(
-            year_counts,
-            current_year,
-            recent_items,
-            source_counts,
-            "/search",
-            active_source=source,
-            q=keyword,
-            year=year,
-        )
-    )
-
-    return _render_layout(
-        active_tab="search",
-        hero_title="搜索",
-        hero_text="搜索页现在只保留一个统一入口，输入关键词或选年份就能查，避免出现两个含义相同的搜索按钮。",
-        stats=[
-            ("关键词", keyword or "未输入"),
-            ("命中结果", str(len(items))),
-            ("年份限制", str(search_year)),
-            ("当前来源", source_label(source) if source else "全部来源"),
-        ],
-        main_html=main_html,
-        side_html=side_html,
-        year_counts=year_counts,
-        source_counts=source_counts,
-        current_year=current_year,
-        selected_year=search_year,
-        selected_source=source,
-        search_query=keyword,
-        page_title="搜索",
-    )
+    from app.routers.search import search_page as unified_page, Kind
+    from typing import cast
+    return unified_page(q.strip(), cast(Kind, kind), page, int(year) if year else None, source)
 
 
 @router.get("/news/{news_id}", response_class=HTMLResponse)
@@ -1230,7 +1162,7 @@ async def news_detail_page(news_id: int) -> HTMLResponse:
 
     main_html = (
         "<section class='panel article-shell'>"
-        "<div class='panel-head'><div><h2>站内详情</h2><div class='panel-subtitle'>上线产品后，列表页应该能自然进入详情页，而不是直接把用户甩到外站。</div></div></div>"
+        "<div class='panel-head'><div><h2>新闻研读</h2><div class='panel-subtitle'>核对报道内容，联系相关考点与原文依据。</div></div></div>"
         "<div class='article-meta-grid'>"
         f"<div class='sync-item'><strong>发布日期</strong><span>{escape(item.published or item.published_at.strftime('%Y-%m-%d'))}</span></div>"
         f"<div class='sync-item'><strong>来源</strong><span>{escape(source_label(item.source))}</span></div>"
@@ -1247,6 +1179,7 @@ async def news_detail_page(news_id: int) -> HTMLResponse:
         f"<div class='notice'><strong>摘要：</strong>{escape(item.summary or '暂无摘要')}</div>"
         f"<div class='notice'><strong>可信说明：</strong>{escape(source_trust_note(item.source))}</div>"
         f"<div class='article-body'>{_render_article_body(item)}</div>"
+        f"{render_news_points(item, BASE_PATH, details=True)}"
         "</section>"
     )
 
@@ -1268,7 +1201,7 @@ async def news_detail_page(news_id: int) -> HTMLResponse:
     return _render_layout(
         active_tab="archive",
         hero_title=item.title,
-        hero_text="详情页让数据库内容真正变成可阅读的产品，而不只是一个跳板列表。",
+        hero_text="阅读报道，核对出处，并联系相关理论考点。",
         stats=[
             ("来源", source_label(item.source)),
             ("发布日期", item.published or item.published_at.strftime("%Y-%m-%d")),
