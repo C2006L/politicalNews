@@ -22,7 +22,7 @@ from app.revisions import append_revision
 from app.material_status import now_iso, write_status, parse_scan
 
 ACCOUNTS = {"MP_WXS_3243013434": "肖秀荣教授", "MP_WXS_3080503014": "考研政治徐涛"}
-EXTRACTOR_VERSION = "rules-2"
+EXTRACTOR_VERSION = "rules-3"
 LOCK = threading.Lock()
 SCAN_KEY = 'learning_import_scan_v1'
 BATCH_SIZE = 200
@@ -45,6 +45,10 @@ def extract_material(html: str) -> dict[str, Any]:
              for a in root.select("mp-common-mpaudio, audio, mpvoice")]
     for node in root.select("script,style,template,mp-common-product"):
         node.decompose()
+    # Formatting spans must not turn one sentence into many independent claims.
+    for node in root.select('span,strong,b,em,i,font,u,a,sup,sub'):
+        node.unwrap()
+    root.smooth()
     lines = [re.sub(r"\s+", " ", str(line)).strip() for line in root.stripped_strings]
     text = "\n".join(lines)
     if "当前环境异常" in text or "完成验证后即可继续访问" in text:
@@ -59,23 +63,33 @@ def extract_material(html: str) -> dict[str, Any]:
     section = ""
     in_focus = False
     in_quiz = False
+    negative_context = False
     current: dict[str, Any] | None = None
     for i, line in enumerate(lines):
         ref = f"L{i + 1}"
-        if "重温重要提法" in line:
+        if line in {'重温重要提法', '点拨', '命题分析'}:
             in_focus = True
+            negative_context = False
             continue
         if line.startswith("选择题练习"):
             in_focus = False
         if in_focus:
             if line.startswith("专题"):
                 section = line
+                negative_context = False
+            elif '经典干扰项' in line:
+                negative_context = True
             else:
+                if line.startswith('➤'):
+                    negative_context = False
+                if (negative_context or len(line) < 10 or line.startswith(('✘', '×', '❌')) or
+                        '干扰项' in line or '考查频率' in line):
+                    continue
                 points.append({"text": line, "section": section, "evidence": [ref]})
-        if "点击空白处查看答案" in line:
+        if '点击空白处查看答案' in line or '点击空格横线查看答案' in line:
             in_quiz = True
             continue
-        if in_quiz and ("后台回复" in line or "下滑查看答案" in line):
+        if in_quiz and any(marker in line for marker in ('后台回复', '下滑查看答案', '参考答案', '【解析】', '今天的带背内容', '往期带背内容')):
             in_quiz = False
         if in_quiz:
             match = re.match(r"^[🌟⭐\s]*(\d+)[.．、]\s*(.*)", line)
@@ -97,6 +111,8 @@ def extract_material(html: str) -> dict[str, Any]:
             flags.append(f"自测第{q['number']}条存在多种表述或信息不足，请对照原文和教材核对。")
     if not points and not questions:
         flags.append("未识别到支持的考点区或自测区，保留原文等待人工整理。")
+    if root.select('svg[data-lazy-bgimg],img'):
+        flags.append('文章含图片或图片式交互题，本次未做 OCR；文字条目不代表覆盖了所有题目。')
     topic = next((line for line in lines if "D" in line and "背诵知识点" in line), "")
     pages = [line for line in lines if re.search(r"P\d+", line)]
     return {"method": EXTRACTOR_VERSION, "topic": topic, "pages": pages,

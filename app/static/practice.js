@@ -60,7 +60,13 @@
   function eventIdentity(event) {
     return JSON.stringify([event.type,event.key,event.type==='grade'?event.event_id:event.at,event.undo_of||'']);
   }
-  const core = {schedule, validCard, validateBackup, eventIdentity};
+  function reviewSummary(rows, now = Date.now()) {
+    const valid = rows.filter(row => validCard(row.card) && Number.isFinite(Date.parse(row.due_at)));
+    const due = valid.filter(row => Date.parse(row.due_at) <= now);
+    const next = valid.filter(row => Date.parse(row.due_at) > now).sort((a,b) => Date.parse(a.due_at) - Date.parse(b.due_at))[0];
+    return {total: valid.length, due: due.length, next: next?.due_at || null, unavailable: rows.length - valid.length};
+  }
+  const core = {schedule, validCard, validateBackup, eventIdentity, reviewSummary};
   if (typeof module !== 'undefined' && module.exports) module.exports = core;
   if (typeof document === 'undefined') return;
 
@@ -183,7 +189,31 @@
   const when = value => new Date(value).toLocaleString('zh-CN');
   let visible = 20, historyVisible = 20, versions = null, generation = 0, prepared = null, fileGeneration = 0;
   const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('political-news-practice') : null;
-  function notify() { if (channel) channel.postMessage('changed'); }
+  function notify() { if (channel) channel.postMessage('changed'); renderDesk(); }
+  let deskGeneration = 0;
+  async function renderDesk() {
+    const desk = document.querySelector('[data-desk-review]');
+    if (!desk) return;
+    const id = ++deskGeneration;
+    const message = desk.querySelector('[data-desk-review-summary]');
+    const link = desk.querySelector('[data-desk-review-link]');
+    try {
+      const summary = reviewSummary(await store.rows());
+      if (id !== deskGeneration || !desk.isConnected) return;
+      message.textContent = summary.unavailable ? '部分复习记录暂不可读，请到复习页检查；原记录保留。' :
+        summary.due ? `现在有 ${summary.due} 张到期卡片，先回想，再展开答案。` :
+        summary.total ? `现在没有到期卡片。下次安排：${when(summary.next)}。` :
+        '还没有复习卡。先读左侧材料，在题目或提法旁点“加入复习”。';
+      link.textContent = summary.due ? `开始复习 ${summary.due} 张 →` : summary.total ? '查看复习安排 →' : '了解怎样复习 →';
+    } catch (_) {
+      if (id === deskGeneration && desk.isConnected) message.textContent = '浏览器暂不能读取复习记录；已有资料仍可阅读。';
+    }
+  }
+  renderDesk();
+  document.addEventListener('study:updated', renderDesk);
+  document.addEventListener('visibilitychange', () => {if (!document.hidden) renderDesk();});
+  window.addEventListener('focus', renderDesk);
+  setInterval(() => {if (!document.hidden) renderDesk();}, 60000);
   async function updateAddButtons() {
     const keys = new Set((await store.rows()).map(row => row.key));
     document.querySelectorAll('[data-practice-add]').forEach(button => {
@@ -279,7 +309,7 @@
       find('more-history').hidden = history.length <= historyVisible;
     } catch (error) { find('summary').textContent = '复习记录暂不可读'; find('message').textContent = error.message; }
   }
-  if (channel) channel.onmessage = () => {render(); updateAddButtons().catch(() => {});};
+  if (channel) channel.onmessage = () => {render(); renderDesk(); updateAddButtons().catch(() => {});};
   function refreshVersions() {
     return fetch(base + '/api/practice/versions', {cache: 'no-store'}).then(response => {if (!response.ok) throw new Error();return response.json();}).then(data => {versions = data.versions; render();}).catch(() => {versions = null; render();});
   }

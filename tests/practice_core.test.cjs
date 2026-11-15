@@ -1,6 +1,6 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {schedule, validCard} = require('../app/static/practice.js');
+const {schedule, validCard, reviewSummary} = require('../app/static/practice.js');
 const now = Date.parse('2028-02-28T23:55:00Z');
 test('forgot resets the streak and schedules ten minutes later across midnight', () => {
   assert.deepEqual(schedule(4, 'forgot', now), {stage: 0, due_at: '2028-02-29T00:05:00.000Z'});
@@ -26,4 +26,18 @@ test('cards must keep a version-bound source and evidence', () => {
   assert.equal(validCard({...card,url:'javascript:alert(1)'}), false);
   assert.equal(validCard({...card,evidence:[]}), false);
   assert.equal(validCard({...card,key:'latest-question'}), false);
+});
+
+test('home review summary uses real due times, including exact boundary and invalid records', () => {
+  const card = {key:'material:1:r2:questions:0',title:'原文',question:'问题',answer:'答案',url:'/learning/1?revision=2#e-L1',evidence:[{text:'依据'}]};
+  const rows = [
+    {card, due_at:new Date(now).toISOString()},
+    {card, due_at:new Date(now+60000).toISOString()},
+    {card, due_at:'bad'},
+    {card:{}, due_at:new Date(now-60000).toISOString()}
+  ];
+  assert.deepEqual(reviewSummary([], now), {total:0,due:0,next:null,unavailable:0});
+  assert.deepEqual(reviewSummary(rows, now), {total:2,due:1,next:new Date(now+60000).toISOString(),unavailable:2});
+  assert.equal(reviewSummary(rows.slice(0,2), now+60000).due,2);
+  assert.equal(reviewSummary(rows.slice(0,2), now-1).due,0);
 });

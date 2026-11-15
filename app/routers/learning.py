@@ -4,14 +4,16 @@ from __future__ import annotations
 import sqlite3
 from html import escape
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from sqlalchemy import func
 
 from app.chrome import header, collection, bookmark
 from app.config import get_settings
 from app.database import SessionLocal
-from app.materials import sync_materials, ImportBusy
+from app.materials import sync_materials, ImportBusy, ACCOUNTS
 from app.material_status import pipeline_status
 from app.knowledge import material_points
 from app.practice import add_button
@@ -111,19 +113,61 @@ def layout(title: str, body: str, active: str = 'learning') -> HTMLResponse:
 def learning_page(account: str | None = None, page: int = Query(1, ge=1)) -> HTMLResponse:
     data = list_materials(account, page)
     base = escape(get_settings().base_path, quote=True)
-    body = '<div class="eyebrow">THE STUDY NOTES</div><h1>公众号研读</h1><p class="learning-notice">考点摘录与自测问答 · 规则整理，尚未人工审核；保留原文出处。</p>'
-    body += f'<p><a href="{base}/knowledge">按考点研读 →</a> · <a href="{base}/practice">我的复习 →</a> · <a href="{base}/learning-import">检查资料导入 →</a></p>'
+    with SessionLocal() as db:
+        query = db.query(LearningMaterial)
+        if account:
+            query = query.filter(LearningMaterial.account == account)
+        q_count = func.coalesce(func.json_array_length(LearningMaterial.payload, '$.questions'), 0)
+        p_count = func.coalesce(func.json_array_length(LearningMaterial.payload, '$.points'), 0)
+        usable = query.filter(q_count + p_count > 0).count()
+        tutorial_candidates = [material_dict(m) for m in query.filter(q_count > 0).order_by(
+            LearningMaterial.imported_at.desc(), LearningMaterial.id.desc()).limit(3).all()]
+    body = '<div class="eyebrow">THE STUDY NOTES</div><h1>公众号研读</h1><p>从老师的文章里读重点、试着回想，再留下需要复习的内容。</p>'
+    body += f'<p class="learning-notice">当前本机{("所选账号" if account else "")}已导入 {data["total"]} 篇，其中 {usable} 篇识别到问答或重点提法。这里只显示已取得的样本，不是公众号完整文章列表；文章里的图片、音视频可能尚未整理。</p>'
+    body += f'<nav class="review-filters" aria-label="公众号来源"><a href="{base}/learning">全部文章</a>'
+    for name in ACCOUNTS.values():
+        href = base + '/learning?' + urlencode({'account': name})
+        body += f'<a href="{escape(href, quote=True)}" {"aria-current=page" if account == name else ""}>{escape(name)}</a>'
+    body += '</nav>'
+    example = next(((m, i, q) for m in tutorial_candidates for i, q in enumerate(m.get('questions', []))
+                    if q.get('question') and q.get('answer') and q.get('evidence') and m.get('revision')
+                    and set(q['evidence']).issubset({line['id'] for line in m.get('evidence', [])})), None)
+    if example:
+        material, index, question = example
+        body += f'''<section class="learning-entry"><h2>第一次用？先试一道题</h2>
+<p>下面的问题来自 {escape(material['account'])} 的《{escape(material['title'])}》。</p>
+<blockquote>{escape(question['question'])}</blockquote>
+<ol><li>打开题目，先自己想答案，再点题目展开原文答案。</li>
+<li>想留到以后复习，就点题目旁的“加入复习”。</li>
+<li>到“我的复习”记下这次有没有想起来，下次按到期时间再看。</li></ol>
+<p><a href="{base}/learning/{material['id']}?revision={material['revision']}#question-{index}">打开这道题，试着回想 →</a> · <a href="{base}/practice">我的复习 →</a></p></section>'''
+    body += f'''<details><summary>“按考点看”是做什么的？</summary>
+<p>把“国有经济的主导作用”“全面依法治国的总抓手”这样的知识点当作目录。点开一个知识点，就能找到已经匹配的老师原文、问答及相关新闻，方便围绕同一问题阅读。</p>
+<p>它不表示这些内容一定会考，也不是两位老师已经互相印证。只有一个来源时，就只显示那一个来源；你也可以直接从下面的文章开始。</p>
+<p><a href="{base}/knowledge">按知识点查找原文 →</a></p></details>
+<p><a href="{base}/knowledge">按考点研读 →</a> · <a href="{base}/practice">我的复习 →</a></p>
+<details><summary>为什么文章少？怎样检查更新？</summary><p>文章少可能是上游尚未采到，不能只靠反复导入补齐。当前采集入口可能只取得最新一篇，历史文章和同次多篇更新仍可能缺失。没有识别到问答，也不代表原文没有价值。</p>
+<p><a href="{base}/learning-import">检查已采集数量、导入与正文恢复 →</a></p></details>'''
     for m in data["items"]:
+        if m['questions']:
+            summary, action, anchor = f'{len(m["questions"])} 道原文问答 · 可逐题回想', '开始自测', '#questions'
+            if m['points']: summary += f' · {len(m["points"])} 条重点提法'
+        elif m['points']:
+            summary, action, anchor = f'{len(m["points"])} 条原文重点提法 · 可阅读并加入复习', '阅读重点提法', '#points'
+        else:
+            summary, action, anchor = '原文资料 · 暂未识别到支持的问答或重点提法，可直接阅读正文', '阅读原文资料', '#source-text'
         body += f'''<article class="learning-entry"><div class="meta">{escape(m['account'])}</div>
 <h2><a href="{base}/learning/{m['id']}">{escape(m['title'])}</a></h2>
-<p>{len(m['points'])} 条考点摘录 · {len(m['questions'])} 条自测问答</p>
-<p>{escape(m['topic'])}</p>{bookmark("learning:" + str(m["id"]), m["title"], get_settings().base_path + "/learning/" + str(m["id"]))} <a href="{base}/learning/{m['id']}">查看考点与依据 →</a></article>'''
+<p>{escape(summary)}</p>
+<p>{escape(m['topic'])}</p>{bookmark("learning:" + str(m["id"]), m["title"], get_settings().base_path + "/learning/" + str(m["id"]))} <a href="{base}/learning/{m['id']}{anchor}">{action} →</a></article>'''
     if not data["items"]:
         body += f'<p>暂无已整理资料。配置公众号资料源并完成导入后将在此显示。</p><p><a href="{base}/getting-started">准备学习资料 →</a></p>'
     if page > 1:
-        body += f'<a href="?page={page - 1}">上一页</a> '
+        previous = urlencode({'page': page - 1, **({'account': account} if account else {})})
+        body += f'<a href="?{escape(previous, quote=True)}">上一页</a> '
     if page * 20 < data["total"]:
-        body += f'<a href="?page={page + 1}">下一页</a>'
+        following = urlencode({'page': page + 1, **({'account': account} if account else {})})
+        body += f'<a href="?{escape(following, quote=True)}">下一页</a>'
     return layout("公众号研读", body)
 
 
@@ -131,7 +175,7 @@ def learning_page(account: str | None = None, page: int = Query(1, ge=1)) -> HTM
 def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) -> HTMLResponse:
     m = find_material(material_id, revision)
     base = escape(get_settings().base_path, quote=True)
-    body = f'<a href="{base}/learning">← 公众号研读</a> · <a href="{base}/practice">我的复习 →</a><p class="eyebrow">{escape(m["account"])}</p><h1>{escape(m["title"])}</h1>'
+    body = f'<a href="{base}/learning">← 公众号研读</a> · <a href="{base}/practice">我的复习 →</a><p class="eyebrow">{escape(m["account"])}</p><h1 class="material-title">{escape(m["title"])}</h1>'
     related = material_points(material_id, m.get('revision'))
     if related:
         body += '<p>关联考点：' + ' · '.join(
@@ -148,23 +192,26 @@ def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) 
     if m['pages']:
         body += '<p>' + escape(' · '.join(m['pages'])) + '</p>'
     if m['points']:
-        body += '<h2>考点摘录</h2>'
+        body += '<h2 id="points">原文重点提法</h2>'
         section = ''
         for index, point in enumerate(m['points']):
             if point['section'] != section:
                 section = point['section']
                 body += '<h3>' + escape(section) + '</h3>'
             refs = ' '.join(f'<a href="#e-{escape(r)}">{escape(r)}</a>' for r in point['evidence'])
-            body += f'<p>{escape(point["text"])} <small>{refs}</small></p>' + add_button(material_id, m['revision'], 'points', index)
+            body += f'<div class="learning-point"><span class="point-sequence" aria-hidden="true">{index + 1:02d}</span><div><p class="knowledge-text">{escape(point["text"])} <small>{refs}</small></p><div class="point-actions">' + add_button(material_id, m['revision'], 'points', index) + '</div></div></div>'
     if m['questions']:
-        body += '<h2>先回想，再展开答案</h2>'
+        body += '<h2 id="questions">先回想，再展开答案</h2><p>先自己想一遍，再点题目展开答案。“加入复习”会保留这道题，不会自动把它记为学会。</p>'
         for index, q in enumerate(m['questions']):
             badge = ' · 原作者重点标记' if q['starred_by_author'] else ''
             badge += ' · 待核对' if q['needs_review'] else ''
             refs = ' '.join(f'<a href="#e-{escape(r)}">{escape(r)}</a>' for r in q['evidence'])
-            body += f'<details class="learning-question"><summary>{q["number"]}. {escape(q["question"])}{badge}</summary><p>{escape(q["answer"])}</p><small>原文依据：{refs}</small></details>' + add_button(material_id, m['revision'], 'questions', index)
+            body += f'<details id="question-{index}" class="learning-question"><summary>{q["number"]}. {escape(q["question"])}{badge}</summary><p class="knowledge-text">{escape(q["answer"])}</p><small>原文依据：{refs}</small></details>' + add_button(material_id, m['revision'], 'questions', index)
     cited = {ref for p in m['points'] + m['questions'] for ref in p['evidence']}
     body += '<details class="learning-evidence"><summary>查看上述内容的原文依据</summary>'
     body += ''.join(f'<p id="e-{escape(line["id"])}"><small>{escape(line["id"])}</small> {escape(line["text"])}</p>' for line in m['evidence'] if line['id'] in cited)
     body += '</details><p>页面整理不包含音频转写，图片内文字也可能未覆盖；请结合原文与教材学习。</p>'
+    if not m['points'] and not m['questions']:
+        body += '<section id="source-text"><h2>已取得的文字正文</h2><p>这篇文章没有匹配到支持的问答或提法格式，以下保留原文，不自动生成自测题。</p>'
+        body += ''.join(f'<p>{escape(line["text"])}</p>' for line in m['evidence']) + '</section>'
     return layout(m['title'], body)

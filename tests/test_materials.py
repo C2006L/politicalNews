@@ -18,7 +18,7 @@ def test_focus_extraction_preserves_source_and_excludes_advertising():
     assert len(result['points']) == 2
     assert all(p['section'] == '专题十五 法治' for p in result['points'])
     assert result['points'][0]['evidence']
-    assert result['method'] == 'rules-2'
+    assert result['method'] == 'rules-3'
 
 
 def test_quiz_separates_answer_and_preserves_author_star():

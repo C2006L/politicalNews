@@ -79,5 +79,6 @@
   library.addEventListener('close', () => { toggle.setAttribute('aria-expanded', 'false'); toggle.focus(); });
   library.addEventListener('click', event => { if (event.target === library && event.clientX < library.getBoundingClientRect().left) library.close(); });
   window.addEventListener('storage', event => { if (event.key === key || event.key === null) { state = {read: [], saved: {}}; load(); update(); } });
+  document.addEventListener('study:updated', update);
   load(); update();
 })();

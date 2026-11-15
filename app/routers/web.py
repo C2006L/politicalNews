@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, date
+import hashlib
 from html import escape
 import json
 import math
@@ -13,11 +14,12 @@ from urllib.parse import urlencode, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
 from app.config import get_settings
 from app.models import News
 from app.study import render_study
+from app.learning_desk import render_learning_desk
 from app.chrome import header, collection, bookmark
 from app.news_knowledge import render_news_points
 
@@ -737,14 +739,33 @@ async def today_page(
     track: str = Query(default="all", pattern="^(all|postgrad|civil|essay)$"),
     topic: str = Query(default="all", pattern="^(all|policy|economy|science|world|theory|other)$"),
 ) -> HTMLResponse:
+    snapshot = study_snapshot(page, source, track, topic)
+    return HTMLResponse(snapshot['html'], headers={'Cache-Control': 'no-store'})
+
+
+def study_snapshot(page: int, source: Optional[str], track: str, topic: str, day: date | None = None) -> dict[str, str]:
+    now = datetime.now(LOCAL_TZ)
+    if day is not None:
+        now = now.replace(year=day.year, month=day.month, day=day.day)
     all_recent_items, _ = query_news(year=None, search=None, months=24)
-    filtered = _filter_items_by_source(all_recent_items, source)
-    items, _ = today_news(filtered, limit=None)
-    return HTMLResponse(render_study(
+    filtered = [item for item in _filter_items_by_source(all_recent_items, source) if item.published_at.date() <= now.date()]
+    items = [item for item in filtered if item.published_at.date() == now.date()]
+    html = render_study(
         items=filtered, today_items=items, track=track, topic=topic,
         page=page, base=BASE_PATH, total=count_news_records(),
-        now=datetime.now(LOCAL_TZ), source=source,
-    ))
+        now=now, source=source, learning_desk=render_learning_desk(BASE_PATH),
+    )
+    revision = hashlib.sha256(html.encode()).hexdigest()
+    return {'day': now.date().isoformat(), 'revision': revision,
+            'html': html.replace('data-live-revision=""', f'data-live-revision="{revision}"', 1)}
+
+
+@router.get('/api/study/live')
+def live_study(page: int = Query(1, ge=1, le=100000), source: str | None = Query(None, max_length=80),
+               track: str = Query('all', pattern='^(all|postgrad|civil|essay)$'),
+               topic: str = Query('all', pattern='^(all|policy|economy|science|world|theory|other)$'),
+               day: date | None = None) -> JSONResponse:
+    return JSONResponse(study_snapshot(page, source, track, topic, day), headers={'Cache-Control': 'no-store'})
 
 
 @router.get("/yesterday", response_class=HTMLResponse)

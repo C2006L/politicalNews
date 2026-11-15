@@ -76,10 +76,12 @@ class StudyTests(unittest.TestCase):
         self.assertIn('今日阅读 / 2 篇', html)
         self.assertIn('/prefix/today?page=1', html)
 
-    def test_fallback_date_sheet_matches_material_date(self):
+    def test_calendar_shows_today_while_material_date_remains_explicit(self):
         html = self.render([news(1, "往期材料", day=11)], today_items=[])
-        self.assertIn('<div class="day">11</div>', html)
-        self.assertIn('星期三', html)
+        self.assertIn('<div class="day" data-clock-day>12</div>', html)
+        self.assertIn('星期四', html)
+        self.assertIn('资料日期 2026.11.11', html)
+        self.assertIn('当前阅读 11月11日', html)
         self.assertIn('近期阅读', html)
 
 

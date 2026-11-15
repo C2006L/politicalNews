@@ -115,7 +115,8 @@ def article_card(reading: Reading, index: int, track: str, base: str) -> str:
 
 
 def render_study(*, items: Sequence[News], today_items: Sequence[News], track: str, topic: str,
-                 page: int, base: str, total: int, now: datetime, source: str | None = None) -> str:
+                 page: int, base: str, total: int, now: datetime, source: str | None = None,
+                 learning_desk: str = '') -> str:
     pool = list(today_items)
     fallback = not pool
     if not pool and items:
@@ -141,13 +142,13 @@ def render_study(*, items: Sequence[News], today_items: Sequence[News], track: s
                      f'<a href="{href(base, "/archive")}">查看往期资料 →</a></div>')
     pager = ''.join(f'<a {"aria-current=\"page\"" if number == page else ""} href="{href(base, "/today", page=number, track=track, topic=topic, source=source)}">{number}</a>' for number in range(max(1, page - 2), min(pages, page + 2) + 1)) if pages > 1 else ''
     latest_text = max((item.published_at for item in pool), default=None)
-    edition = latest_text or now
     directory = ''.join(
         f'<li><a href="#reading-{reading.key}"><span>{(page - 1) * 10 + idx:02d}</span>'
         f'<em>{escape(reading.item.title)}</em></a></li>'
         for idx, reading in enumerate(current, 1)
     )
     substitutions = {
+        "learning_desk": learning_desk,
         "site_header": header(base, "today"), "site_library": collection(base),
         "base": escape(base, quote=True), "date": now.strftime("%Y.%m.%d"),
         "weekday": "星期" + "一二三四五六日"[now.weekday()], "tracks": track_links,
@@ -158,10 +159,13 @@ def render_study(*, items: Sequence[News], today_items: Sequence[News], track: s
         "notice": escape(("今日暂无更新，已显示最近时政。" if fallback else "") + (f"当前筛选来源：{source_label(source)}。" if source else "") + "同日同标题稿件合并展示；刊载来源数不等于独立报道数。"),
         "scope": "近期阅读" if fallback else "今日阅读",
         "guide": GUIDES[track],
-        "edition_month": edition.strftime("%Y / %m"),
-        "edition_day": edition.strftime("%d"),
-        "edition_weekday": "星期" + "一二三四五六日"[edition.weekday()],
-        "edition_label": "资料日期" if latest_text else "等待采集",
+        "edition_month": now.strftime("%Y / %m"),
+        "edition_day": now.strftime("%d"),
+        "edition_weekday": "星期" + "一二三四五六日"[now.weekday()],
+        "edition_label": "北京时间",
+        "calendar_day": now.strftime('%Y-%m-%d'),
+        "freshness": (f'今日暂无入库内容，当前阅读 {latest_text:%m月%d日} 的最近资料。' if fallback and latest_text else
+                      '资料库正在等待首次获取。' if not latest_text else '今日资料 · 内容入库后自动更新。'),
         "directory": directory or '<li class="directory-empty">暂无阅读材料</li>',
         "page_count": str(len(current)),
     }

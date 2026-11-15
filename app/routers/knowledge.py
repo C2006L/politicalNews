@@ -105,9 +105,17 @@ def review_link(link_id: int, status: Literal["confirmed", "rejected", "candidat
 @router.get("/knowledge", response_class=HTMLResponse)
 def knowledge_page() -> HTMLResponse:
     base = escape(get_settings().base_path, quote=True)
-    body = f'<a href="{base}/learning">← 公众号研读</a><h1>按考点研读</h1><p class="learning-notice">明确表述模板建立候选关联，需人工确认。不同来源分别呈现，不自动拼成统一结论；教材版本尚未指定。</p>'
+    body = f'<a href="{base}/learning">← 公众号研读</a><h1>按考点研读</h1><p>把知识点当目录：选一个你想弄清楚的问题，查看老师怎么说、原文在哪里，以及有哪些相关新闻。</p>'
     points = list_points()['items']
-    body += f'<p><a href="{base}/review">维护关联与审核记录 →</a></p>'
+    multi = sum(point['account_count'] > 1 for point in points)
+    body += f'<p class="learning-notice">当前从已有资料匹配出 {len(points)} 个知识点，其中 {multi} 个有多个账号的材料。样本仍少，这不是完整考试大纲，也不能据此判断重点或押题。</p>'
+    comparisons = [point for point in points if point['account_count'] > 1]
+    if comparisons:
+        body += '<section class="learning-entry"><h2>先看两位老师讲同一知识点</h2><p>点开后，分别看问答和原文提法，核对相同之处与表述差别。这里保留两份来源，不合成一个标准答案；关系仍待确认。</p><ul>'
+        body += ''.join(f'<li><a href="{base}/knowledge/{escape(point["id"], quote=True)}">{escape(point["title"])}</a> · {point["account_count"]} 个来源</li>' for point in comparisons)
+        body += '</ul></section>'
+    body += '<p>例如想复习“国有经济的主导作用”，点开这个目录，再看其中的原文问题和答案。一个目录只有一个来源时，就先读这一份；没有材料的章节目前不会自动补成答案。</p>'
+    body += f'<details><summary>关联是否已经核对？</summary><p>目前按明确表述模板建立候选关联，需人工确认。不同来源分别呈现，不自动拼成统一结论；教材版本尚未指定。</p><p><a href="{base}/review">维护关联与审核记录 →</a></p></details>'
     for point in points:
         body += f'<article class="learning-entry"><div class="meta">{escape(point["subject"])}</div><h2><a href="{base}/knowledge/{point["id"]}">{escape(point["title"])}</a></h2><p>{point["evidence_count"]} 条当前资料依据 · {point["account_count"]} 个账号 · {point["news_count"]} 条新闻关联</p></article>'
     if not points:
@@ -120,6 +128,9 @@ def knowledge_detail(point_id: str, history: bool = False, page: int = Query(1, 
     point = get_point(point_id, history, page)
     base = escape(get_settings().base_path, quote=True)
     body = f'<a href="{base}/knowledge">← 考点索引</a><h1>{escape(point["title"])}</h1><p class="learning-notice">关联用于组织阅读。候选关系及原文答案尚待核对，作者重点标记不等于系统押题。</p>'
+    accounts = {entry['account'] for entry in point['evidence'] if entry['is_current']}
+    if len(accounts) > 1:
+        body += f'<p>这个知识点已有 {len(accounts)} 个来源。下面分别保留老师的原文：先回想问题，再对照各自表述和段落依据；不会用其中一份覆盖另一份。</p>'
     body += f'<p><a href="#theory">理论资料与自测</a> · <a href="#related-news">相关新闻 {point["news"]["total"]} 条 ↓</a></p>'
     body += f'<p><a href="?history={"false" if history else "true"}">{"只看当前版本" if history else "包含历史版本"}</a></p><h2 id="theory">理论资料与自测</h2>'
     for entry in point['evidence']:
@@ -127,18 +138,20 @@ def knowledge_detail(point_id: str, history: bool = False, page: int = Query(1, 
         state = '已确认关联' if entry['status'] == 'confirmed' else '候选关联 · 待确认'
         if not entry['is_current']:
             state += ' · 历史版本'
-        body += f'<article class="learning-entry"><div class="meta">{escape(entry["account"])} · 版本 {entry["revision"]} · {state}</div><h2>{escape(entry["title"])}</h2>'
+        body += f'<article class="learning-entry knowledge-entry"><div class="meta">{escape(entry["account"])} · 版本 {entry["revision"]} · {state}</div><h2 class="source-title">{escape(entry["title"])}</h2>'
         if entry['kind'] == 'questions':
-            body += f'<details class="learning-question"><summary>{escape(item["question"])}</summary><p>{escape(item["answer"])}</p></details>'
+            body += f'<details class="learning-question"><summary>{escape(item["question"])}</summary><p class="knowledge-text">{escape(item["answer"])}</p>'
             if item.get('needs_review'):
                 body += '<p>原文存在多表述或信息不足，需对照教材核对。</p>'
             if item.get('starred_by_author'):
                 body += '<p>原作者重点标记</p>'
         else:
-            body += '<p>' + escape(item['text']) + '</p>'
+            body += '<p class="knowledge-text">' + escape(item['text']) + '</p>'
+            body += f'<details class="source-evidence"><summary>核对原文依据 · {len(entry["evidence"])} 段</summary>'
         for line in entry['evidence']:
             url = f'{base}/learning/{entry["material_id"]}?revision={entry["revision"]}#e-{escape(line["id"])}'
-            body += f'<p><small><a href="{url}">版本 {entry["revision"]} / {escape(line["id"])}</a></small> {escape(line["text"])}</p>'
+            body += f'<p class="evidence-text"><small><a href="{url}">版本 {entry["revision"]} / {escape(line["id"])}</a></small> {escape(line["text"])}</p>'
+        body += '</details>'
         body += add_button(entry['material_id'], entry['revision'], entry['kind'], entry['item_index'])
         body += '</article>'
     if not point['evidence']:

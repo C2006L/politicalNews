@@ -23,6 +23,16 @@ CATALOG = [
     ("development-sharing", "共享发展与公平正义", "新思想", r"^新发展理念中注重解决社会公平正义问题的是什么[？?]?$"),
     ("productivity-innovation", "新质生产力的核心要素", "新思想", r"^新质生产力的核心要素是什么[？?]?$"),
     ("economy-real", "现代化产业体系的根基", "新思想", r"^现代化产业体系的根基是什么[？?]?$"),
+    ("modernization-dream-essence", "中国梦的本质", "新思想",
+     r"^(?:中国梦的本质是什么[？?]?|实现中华民族伟大复兴的中国梦，本质是国家富强、民族振兴、人民幸福[。.]?)$"),
+    ("modernization-supports", "中国式现代化的基础性、战略性支撑", "新思想",
+     r"^(?:中国式现代化的基础性、战略性支撑是什么[？?]?|教育、科技、人才是中国式现代化的基础性、战略性支撑。)$"),
+    ("development-primary-task", "全面建设社会主义现代化国家的首要任务", "新思想",
+     r"^(?:全面建设社会主义现代化国家的首要任务是什么[？?]?|高质量发展是全面建设社会主义现代化国家的首要任务。)$"),
+    ("development-productivity-role", "高质量发展与新质生产力", "新思想",
+     r"^(?:推动高质量发展的内在要求和重要着力点是什么[？?]?|推动高质量发展的内在要求和重要着力点：发展新质生产力。)$"),
+    ("economy-ownership-status", "公有制与非公有制经济的地位", "新思想",
+     r"^(?:公有制经济和非公有制经济都是什么的重要组成部分[？?]?$|公有制经济与非公有制经济都是社会主义市场经济的重要组成部分，这里一定要注意)"),
 ]
 
 
@@ -34,7 +44,9 @@ def link_revision(db: Session, revision: MaterialRevision) -> int:
         for kind in ("points", "questions"):
             for index, item in enumerate(payload.get(kind, [])):
                 content = item.get("question" if kind == "questions" else "text", "")
-                if not re.search(pattern, content.strip()):
+                normalized = re.sub(r'^[➤•]\s*[①②③④⑤⑥⑦⑧⑨⑩]?\s*', '', content.strip())
+                normalized = re.sub(r'\s*[（(]P\d+(?:[-–—]\d+)?[）)]\s*$', '', normalized)
+                if not re.search(pattern, normalized):
                     continue
                 refs = item.get("evidence", [])
                 if not refs or not all(ref in valid_refs for ref in refs):
@@ -47,7 +59,7 @@ def link_revision(db: Session, revision: MaterialRevision) -> int:
                 if exists:
                     continue
                 db.add(KnowledgeLink(point_id=point_id, revision_id=revision.id, kind=kind,
-                                     item_index=index, evidence_ids=refs, status="candidate", method="catalog-v1"))
+                                     item_index=index, evidence_ids=refs, status="candidate", method="catalog-v2"))
                 added += 1
     return added
 
