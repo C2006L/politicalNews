@@ -64,11 +64,15 @@ def pipeline_status() -> dict[str, Any]:
         "coverage": "latest_only_not_complete", "accounts": [],
         "note": "本地文章库不能证明采集器当前在线或授权有效；没有新入库不等于公众号没有更新。",
     }
+    acquisition['storage_mode'] = 'exported_snapshot' if get_settings().werss_source_is_snapshot else 'direct_read_only'
+    acquisition['snapshot_age_seconds'] = None
     if not configured:
         acquisition["state"] = "not_configured"
     else:
         try:
             path = Path(configured).resolve(strict=True)
+            if get_settings().werss_source_is_snapshot:
+                acquisition['snapshot_age_seconds'] = max(0, int(datetime.now(timezone.utc).timestamp() - path.stat().st_mtime))
             with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
                 for account_id, name in ACCOUNTS.items():
                     row = db.execute(
@@ -98,5 +102,6 @@ def pipeline_status() -> dict[str, Any]:
         imported = {**imported, 'state': 'interrupted', 'error': 'interrupted'}
     from app.upstream import status as upstream_status
     from app.body_recovery import status as recovery_status
+    from app.source_coverage import coverage_report
     return {"acquisition": acquisition, "import": imported, 'scan': scan, 'upstream_check': upstream_status(),
-            'body_recovery': recovery_status()}
+            'body_recovery': recovery_status(), 'coverage_report': coverage_report()}

@@ -116,7 +116,15 @@ def knowledge_page() -> HTMLResponse:
         body += '</ul></section>'
     body += '<p>例如想复习“国有经济的主导作用”，点开这个目录，再看其中的原文问题和答案。一个目录只有一个来源时，就先读这一份；没有材料的章节目前不会自动补成答案。</p>'
     body += f'<details><summary>关联是否已经核对？</summary><p>目前按明确表述模板建立候选关联，需人工确认。不同来源分别呈现，不自动拼成统一结论；教材版本尚未指定。</p><p><a href="{base}/review">维护关联与审核记录 →</a></p></details>'
+    subjects = list(dict.fromkeys(point['subject'] for point in points))
+    body += '<nav class="knowledge-subjects" aria-label="按科目定位">' + ''.join(
+        f'<a href="#subject-{index}">{escape(subject)} · {sum(p["subject"] == subject for p in points)}</a>'
+        for index, subject in enumerate(subjects)) + '</nav>'
+    current_subject = None
     for point in points:
+        if point['subject'] != current_subject:
+            current_subject = point['subject']
+            body += f'<h2 id="subject-{subjects.index(current_subject)}">{escape(current_subject)}</h2>'
         body += f'<article class="learning-entry"><div class="meta">{escape(point["subject"])}</div><h2><a href="{base}/knowledge/{point["id"]}">{escape(point["title"])}</a></h2><p>{point["evidence_count"]} 条当前资料依据 · {point["account_count"]} 个账号 · {point["news_count"]} 条新闻关联</p></article>'
     if not points:
         body += '<p>尚未发现匹配的考点材料。</p>'

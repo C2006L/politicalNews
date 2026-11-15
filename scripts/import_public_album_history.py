@@ -17,8 +17,10 @@ from app.materials import ACCOUNTS, extract_material
 from scripts.database_backup import backup
 
 
-def import_snapshots(source: Path, snapshots: Path, backup_path: Path) -> dict[str, int]:
+def import_snapshots(source: Path, snapshots: Path, backup_path: Path, source_stopped: bool = False) -> dict[str, int]:
     source = source.resolve(strict=True)
+    if (source.parent / 'learning.snapshot.db').exists() and not source_stopped:
+        raise ValueError('Stop WeRSS and its snapshot exporter before upstream maintenance; explicitly acknowledge source_stopped')
     records = {}
     aliases = {}
     alias_records = {}
@@ -97,5 +99,6 @@ if __name__ == '__main__':
     parser.add_argument('source', type=Path)
     parser.add_argument('snapshots', type=Path)
     parser.add_argument('backup', type=Path)
+    parser.add_argument('--source-stopped', action='store_true', help='Acknowledge that WeRSS and the snapshot exporter are stopped')
     args = parser.parse_args()
-    print(json.dumps(import_snapshots(args.source, args.snapshots, args.backup)))
+    print(json.dumps(import_snapshots(args.source, args.snapshots, args.backup, source_stopped=args.source_stopped)))

@@ -24,8 +24,24 @@
       find('upstream-button').disabled = checking || probe.state==='running' || probe.state==='not_configured' || probe.retry_after_seconds > 0;
       find('upstream-button').textContent = probe.retry_after_seconds ? `稍后再检查（${probe.retry_after_seconds} 秒）` : '主动检查上游通道';
       find('source-state').textContent = source.state === 'not_configured' ? '尚未配置 WeRSS 文章库。' : source.database_readable ? '文章库可读，采集实时状态与授权仍未确认。' : '上游文章库暂不可读，已有学习资料仍可使用。';
+      if (source.storage_mode==='exported_snapshot') find('source-state').textContent += source.snapshot_age_seconds==null ? ' 正在等待容器导出独立快照。' : ` 使用容器导出快照，距生成约 ${source.snapshot_age_seconds} 秒。${source.snapshot_age_seconds>180?'快照已过时，请检查快照容器；不能据此判断最近更新。':''}`;
       find('source-accounts').replaceChildren(...source.accounts.map(account => {
         const line = document.createElement('p'); line.textContent = `${account.name}：已存 ${account.articles} 篇，有文字 ${account.with_text} 篇，待取正文 ${account.awaiting_text} 篇。`; return line;
+      }));
+      const coverage = data.coverage_report;
+      find('coverage-note').textContent = coverage?.note || '覆盖检查暂不可用；不能据此判断资料已齐全。';
+      find('coverage-accounts').replaceChildren(...(coverage?.accounts || []).map(account => {
+        const section = document.createElement('section'), heading = document.createElement('h3'), counts = document.createElement('p'), gaps = document.createElement('p'), periods = document.createElement('p');
+        heading.textContent = account.name;
+        counts.textContent = `已整理 ${account.materials} 篇；尚无自测条目 ${account.unstructured} 篇，包含未转写音频 ${account.audio_not_transcribed} 篇，图片覆盖未核实 ${account.images_not_verified} 篇。最近整理：${when(account.last_organized_at)}。`;
+        gaps.textContent = account.possible_internal_gaps.length ? `已见期数区间内待核对：${account.possible_internal_gaps.map(n=>'D'+n).join('、')}。这是疑似缺号，尚未证实漏采。` : '已见期数区间内没有缺号；这不证明历史完整，也不代表覆盖全部课程。';
+        if (!account.observed_periods.length) gaps.textContent = '尚未从标题识别到带背期数。';
+        periods.className = 'coverage-periods';
+        account.items.forEach(item => item.material_ids.forEach((id,index) => {
+          const a = document.createElement('a'); a.href = `${base}/learning/${id}`; a.textContent = `D${item.period}${index?'（同号另一篇）':''}`; periods.append(a,document.createTextNode(' '));
+        }));
+        if (account.duplicate_periods.length) {const warning=document.createElement('p');warning.textContent='存在同号文章，可能属于不同年度或修订，未自动合并：'+account.duplicate_periods.map(n=>'D'+n).join('、');section.append(warning);}
+        section.append(heading,counts,gaps,periods);return section;
       }));
       find('import-state').textContent = `${states[imported.state] || '状态未确认'}${imported.error_detail ? '：'+(errors[imported.error_detail] || '请检查资料源') : ''}`;
       const result = imported.result || {};

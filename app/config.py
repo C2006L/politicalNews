@@ -51,6 +51,7 @@ class Settings:
     werss_api_url: str = ''
     werss_api_token_file: str = ''
     werss_recovery_token_file: str = ''
+    werss_source_is_snapshot: bool = False
 
 
 def get_settings() -> Settings:
@@ -67,4 +68,5 @@ def get_settings() -> Settings:
         werss_api_url=os.getenv('WERSS_API_URL', '').strip(),
         werss_api_token_file=os.getenv('WERSS_API_TOKEN_FILE', '').strip(),
         werss_recovery_token_file=os.getenv('WERSS_RECOVERY_TOKEN_FILE', '').strip(),
+        werss_source_is_snapshot=_truthy_env('WERSS_SOURCE_IS_SNAPSHOT', '0'),
     )

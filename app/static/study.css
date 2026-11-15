@@ -64,3 +64,7 @@ html{scrollbar-gutter:stable}
   .desk-columns { grid-template-columns: 1fr; gap: 18px; }
   .desk-columns > section + section { border-left: 0; border-top: 1px solid #d5d4c8; padding: 16px 0 0; }
 }
+.collection-backup { border-top:1px solid var(--line); padding:16px 0; margin-top:20px; font-size:12px; }
+.collection-backup p { line-height:1.8; overflow-wrap:anywhere; }
+.collection-backup input { max-width:100%; }
+.collection-backup button { background:none; border:1px solid var(--line); padding:6px 10px; color:var(--ink); font-size:12px; }

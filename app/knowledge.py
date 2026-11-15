@@ -33,7 +33,32 @@ CATALOG = [
      r"^(?:推动高质量发展的内在要求和重要着力点是什么[？?]?|推动高质量发展的内在要求和重要着力点：发展新质生产力。)$"),
     ("economy-ownership-status", "公有制与非公有制经济的地位", "新思想",
      r"^(?:公有制经济和非公有制经济都是什么的重要组成部分[？?]?$|公有制经济与非公有制经济都是社会主义市场经济的重要组成部分，这里一定要注意)"),
+    ("life-purpose", "人生观的核心", "思法", r"^人生观的核心：人生目的。"),
+    ("life-value-scale", "评价人生价值的根本尺度", "思法", r"^评价人生价值的根本尺度：看一个人的实践活动是否符合社会发展的客观规律"),
+    ("life-value-practice", "实现人生价值的必由之路", "思法", r"^实现人生价值的必由之路：社会实践。$"),
+    ("ideal-features", "理想的特征", "思法", r"^理想的特征：超越性、实践性、时代性。$"),
+    ("patriotism-meaning", "爱国主义的内涵", "思法", r"^爱国主义：体现了人们对自己祖国的深厚感情"),
+    ("morality-origin", "道德起源的首要前提", "思法", r"^道德起源的首要前提、第一个历史前提：劳动。$"),
+    ("morality-functions", "道德最基本的功能", "思法", r"^道德最基本的功能：认识功能、规范功能和调节功能。$"),
+    ("morality-regulation", "道德调节的主要形式", "思法", r"^道德调节的主要形式：道德评价。$"),
+    ("history-yangwu-end", "洋务运动失败的标志", "史纲", r"^洋务运动失败的标志是什么[？?]?$"),
+    ("history-yangwu-cause", "洋务运动失败的根本原因", "史纲", r"^洋务运动失败的根本原因是什么[？?]?$"),
+    ("history-mayfourth-trigger", "五四运动的直接导火线", "史纲", r"^五四运动的直接导火线是什么[？?]?$"),
+    ("history-rectification-task", "延安整风运动的主要任务", "史纲", r"^延安整风运动中最主要的任务是什么[？?]?$"),
+    ("history-rectification-focus", "延安整风运动的重点", "史纲", r"^延安整风运动的重点是什么[？?]?$"),
+    ("revolution-first-question", "中国革命的首要问题", "毛中特", r"^中国革命的首要问题是什么[？?]?$"),
 ]
+
+
+def normalize_form(content: str) -> str:
+    normalized = re.sub(r'^[➤•]\s*[①②③④⑤⑥⑦⑧⑨⑩]?\s*', '', content.strip())
+    return re.sub(r'\s*[（(]P\d+(?:[-–—]\d+)?[）)]\s*$', '', normalized)
+
+
+def match_points(content: str) -> set[str]:
+    """Exact-form candidates for reproducible positive/negative evaluation."""
+    normalized = normalize_form(content)
+    return {point_id for point_id, _, _, pattern in CATALOG if re.search(pattern, normalized)}
 
 
 def link_revision(db: Session, revision: MaterialRevision) -> int:
@@ -44,8 +69,7 @@ def link_revision(db: Session, revision: MaterialRevision) -> int:
         for kind in ("points", "questions"):
             for index, item in enumerate(payload.get(kind, [])):
                 content = item.get("question" if kind == "questions" else "text", "")
-                normalized = re.sub(r'^[➤•]\s*[①②③④⑤⑥⑦⑧⑨⑩]?\s*', '', content.strip())
-                normalized = re.sub(r'\s*[（(]P\d+(?:[-–—]\d+)?[）)]\s*$', '', normalized)
+                normalized = normalize_form(content)
                 if not re.search(pattern, normalized):
                     continue
                 refs = item.get("evidence", [])
@@ -59,7 +83,7 @@ def link_revision(db: Session, revision: MaterialRevision) -> int:
                 if exists:
                     continue
                 db.add(KnowledgeLink(point_id=point_id, revision_id=revision.id, kind=kind,
-                                     item_index=index, evidence_ids=refs, status="candidate", method="catalog-v2"))
+                                     item_index=index, evidence_ids=refs, status="candidate", method="catalog-v3"))
                 added += 1
     return added
 

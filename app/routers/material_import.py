@@ -29,6 +29,8 @@ def import_page() -> HTMLResponse:
 <h2>上游文章库</h2>
 <p data-source-state role="status"></p><div data-source-accounts></div>
 <p>库文件可读不能证明授权有效；目前最新一篇通道仍可能漏掉多篇更新和历史文章，实时授权状态保持未确认。</p>
+<section><h2>已经取得哪些学习材料？</h2><p data-coverage-note></p><div data-coverage-accounts></div>
+<p>“尚无自测条目”仍可阅读已取得原文。文字整理不包含图片题识别、音频转写或教材核对。</p></section>
 <section data-body-recovery data-base="{base}"><h2>恢复已知缺正文</h2>
 <p>只处理两个已订阅账号中已经发现、但尚无正文的文章。每次最多 3 篇排队，逐篇重取；未知历史文章不会因此自动补齐。</p>
 <p>沿用上方管理口令。任务已提交不代表正文已恢复，只有有效正文实际出现并导入后才显示完成。</p>

@@ -53,3 +53,11 @@ def test_identity_change_rolls_back_and_invalid_body_not_imported(tmp_path):
     (folder/'b.json').write_text(json.dumps(row),encoding='utf-8')
     with pytest.raises(ValueError):import_snapshots(source,folder,tmp_path/'backup2.db')
     assert not (tmp_path/'backup2.db').exists()
+
+
+def test_known_snapshot_deployment_requires_offline_maintenance_acknowledgement(tmp_path):
+    source=tmp_path/'source.db';create_source(source)
+    (tmp_path/'learning.snapshot.db').touch()
+    with pytest.raises(ValueError,match='Stop WeRSS'):
+        import_snapshots(source,tmp_path/'snapshots',tmp_path/'backup.db')
+    assert not (tmp_path/'backup.db').exists()

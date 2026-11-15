@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
-$env:WERSS_DATABASE_PATH = Join-Path $workspaceRoot 'werss-local\local-deploy\data\db.db'
+$env:WERSS_DATABASE_PATH = Join-Path $workspaceRoot 'werss-local\local-deploy\data\learning.snapshot.db'
+$env:WERSS_SOURCE_IS_SNAPSHOT = '1'
 $channelCredential = Join-Path $workspaceRoot 'werss-local\local-deploy\data\political-news-channel-key.json'
 if ((Test-Path -LiteralPath $channelCredential) -and -not $env:WERSS_API_TOKEN_FILE) {
     if (-not $env:WERSS_API_URL) { $env:WERSS_API_URL = 'http://127.0.0.1:8003' }

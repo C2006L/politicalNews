@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "verified_on": "2026-11-15",
+  "container": "political-news-werss",
+  "snapshot_container": "political-news-werss-snapshot",
+  "image": "ghcr.io/rachelos/we-mp-rss@sha256:af771f21b3f7958a5dea16911fba050a6d7b92eac2fb2499c467c1b11f07ef34",
+  "image_id": "sha256:af771f21b3f7958a5dea16911fba050a6d7b92eac2fb2499c467c1b11f07ef34",
+  "ports": {"study": 8004, "werss": 8003},
+  "patches": {
+    "patches/weread_mp.py": "4d365d95db3f8e8d2d0945a250671890ea96791c981f5d6cc7bd3faa77ae2025",
+    "patches/webhook.py": "3883172e7988b00e1c16d3968ce6266fe411ec0ee6b4cf9058117d1e76b6ae7f"
+  }
+}
