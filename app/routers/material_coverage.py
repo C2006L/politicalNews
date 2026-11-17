@@ -18,6 +18,19 @@ def coverage_api() -> dict[str, Any]:
 def coverage_page() -> HTMLResponse:
     data=coverage();base=escape(get_settings().base_path,quote=True)
     body=f'<div class="eyebrow">COLLECTION LEDGER</div><h1>公众号收录覆盖</h1><p>近90天时政优先：{data["window"]["start"]} — {data["window"]["end"]}。当前已收录 {data["total"]} 篇正文，学习材料另列。</p><p class="report-scope">{escape(data["scope"])}</p><p><a href="{base}/learning">返回资料目录 →</a></p>'
+    body+=f'<p><a href="{base}/material-quality">检查公众号正文质量 →</a> · <a href="{base}/news-quality">检查网站正文质量 →</a></p>'
+    from app.database import SessionLocal
+    from app.models import AppState
+    import json
+    with SessionLocal() as db:
+        record=db.get(AppState,'official_websites_latest')
+        try:website=json.loads(record.value) if record else {}
+        except ValueError:website={}
+    if website:
+        body+='<section class="learning-entry"><h2>官方网站补充</h2><p>独立收录在时政资料库，不计入公众号篇数或历史覆盖率。每批有限额，并非近90天全量。</p>'
+        for item in website.get('sources',[]):
+            body+=f'<p><a href="{base}/source/{escape(item["source"])}">{escape(item["label"])} →</a> · 本批新增 {item["saved"]} 篇 · 已有 {item["existing"]} 篇 · 日期未知 {item["date_unknown"]} 篇 · 失败 {len(item["failed"])} 条</p>'
+        body+='</section>'
     states={'verification_required':'遇到平台验证','partial':'仍有缺口','directory_checked':'本批目录已检查','unknown_directory':'未掌握完整目录'}
     ends={'declared_directory_covered':'目录链接已发现完，正文另行核对','directory_end':'已到公开目录末尾','repeated_or_empty_page':'返回重复或空页，仍需核查','repeated_cursor':'分页未前进','page_limit':'达到本批页数上限','ValueError':'页面需验证或目录无法解析'}
     for row in data['items']:

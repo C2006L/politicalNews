@@ -751,11 +751,13 @@ def study_snapshot(page: int, source: Optional[str], track: str, topic: str, day
         notes = render_material_notes(db, BASE_PATH, overrides)
         confirmed_events = confirmed_event_map(db)
         event_hints = event_hint_map(db)
+        from app.news_quality import capture_records
+        captures=capture_records(db)
     html = render_study(
         items=filtered, today_items=items, track=track, topic=topic,
         page=page, base=BASE_PATH, total=count_news_records(),
         now=now, source=source, learning_desk=notes, mode=mode, overrides=overrides,
-        confirmed_events=confirmed_events,event_hints=event_hints,
+        confirmed_events=confirmed_events,event_hints=event_hints,captures=captures,
     )
     revision = hashlib.sha256(html.encode()).hexdigest()
     return {'day': now.date().isoformat(), 'revision': revision,

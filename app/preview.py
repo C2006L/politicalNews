@@ -14,7 +14,7 @@ MAX_BYTES = 12 * 1024 * 1024
 PATHS = re.compile(
     r'/(?:|today|yesterday|reports|reports/saved/[a-f0-9]{64}|news/\d+|'
     r'learning|learning/\d+|knowledge|knowledge/[a-z0-9_-]+|practice|'
-    r'material-coverage|api/material-coverage|categories|category/[a-z_]+|archive|years|year/\d+|search|events|'
+    r'material-quality|material-coverage|api/material-coverage|categories|category/[a-z_]+|archive|years|year/\d+|search|events|'
     r'sources|source/[a-z_]+|news-quality|'
     r'api/study/live|api/reports|api/events|api/events/[a-f0-9]+|'
     r'api/search|api/learning|api/learning/\d+|'

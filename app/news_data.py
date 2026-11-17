@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 SOURCE_LABELS = {
+    "banyuetan_web":"半月谈·官网补充",
+    "people_opinion_web":"人民网观点·官网补充",
     "gov_cn": "中国政府网",
     "people_cn": "人民网",
     "xinhuanet": "新华网",
@@ -33,6 +35,8 @@ SOURCE_LABELS = {
     "sina": "新浪新闻",
 }
 SOURCE_TRUST_LABELS = {
+    "banyuetan_web":"官方媒体网站补充",
+    "people_opinion_web":"官方媒体网站补充",
     "gov_cn": "官方发布",
     "people_cn": "央媒报道",
     "xinhuanet": "央媒报道",
@@ -46,6 +50,8 @@ SOURCE_TRUST_LABELS = {
     "sina": "转载来源",
 }
 SOURCE_TRUST_NOTES = {
+    "banyuetan_web":"半月谈公开官网评论、基层治理与时政讲解栏目；不计作公众号文章或公众号历史覆盖。",
+    "people_opinion_web":"人民网观点公开网站文章；作者观点与政策事实分别阅读，不计作微信公众号收录。",
     "gov_cn": "国务院与政府系统公开发布内容，优先级最高。",
     "people_cn": "人民网时政频道原文或 RSS，同步后保留原文链接。",
     "xinhuanet": "新华网政治频道原文或 RSS，同步后保留原文链接。",

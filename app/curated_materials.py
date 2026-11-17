@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.editorial import CATEGORIES, select_document
 from app.models import LearningMaterial
+from app.material_quality import latest_quality
 
 
 def render_material_notes(db: Session, base: str, overrides: dict) -> str:
@@ -15,7 +16,7 @@ def render_material_notes(db: Session, base: str, overrides: dict) -> str:
     for row in rows:
         result = select_document(row, overrides)
         counts[result.category] += 1
-        if result.selected:
+        if result.selected and latest_quality(db,row)['featured_eligible']:
             selected.append((row, result))
     body = '<section class="account-curation"><h2>公众号里的时政补充</h2>'
     if selected:

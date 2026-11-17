@@ -273,6 +273,10 @@ def _hostname_matches(hostname: str | None, allowed_domains: Tuple[str, ...]) ->
 
 
 def _is_allowed_source_link(source: str | None, link: str) -> bool:
+    if source in {'banyuetan_web','people_opinion_web'}:
+        from app.official_sources import SOURCES
+        parsed=urlparse(link)
+        return parsed.scheme in {'http','https'} and parsed.hostname==SOURCES[source][1] and not parsed.username and not parsed.password
     rule = TRUSTED_SOURCE_RULES.get(source or "")
     if not rule:
         return False

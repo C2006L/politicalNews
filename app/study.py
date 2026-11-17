@@ -54,13 +54,16 @@ class Reading:
 
 def prepare_readings(items: Sequence[News], track: str = "all", topic: str = "all",
                      mode: str = 'all', overrides: dict | None = None,
-                     confirmed_events: dict[int,str] | None = None) -> list[Reading]:
+                     confirmed_events: dict[int,str] | None = None, captures: dict | None = None) -> list[Reading]:
     """Same-title groups or confirmed events within the current date/filter only."""
     track = track if track in TRACKS else "all"
     groups: dict[tuple[str, str, str, bool], list[News]] = {}
     selections = {}
     labels = {}
     for item in items:
+        if mode=='featured' and captures is not None and item.id in captures:
+            from app.news_quality import capture_status
+            if capture_status(item,captures)['status']!='extracted':continue
         decision = select_document(item, overrides)
         selections[item.id] = decision
         if mode == 'featured' and not decision.selected:
@@ -140,13 +143,13 @@ def article_card(reading: Reading, index: int, track: str, base: str, event_hint
 def render_study(*, items: Sequence[News], today_items: Sequence[News], track: str, topic: str,
                  page: int, base: str, total: int, now: datetime, source: str | None = None,
                  learning_desk: str = '', mode: str = 'all', overrides: dict | None = None,
-                 confirmed_events: dict[int,str] | None = None, event_hints: dict | None = None) -> str:
+                 confirmed_events: dict[int,str] | None = None, event_hints: dict | None = None, captures: dict | None = None) -> str:
     pool = list(today_items)
     fallback = not pool
     if not pool and items:
         latest = max(item.published_at.date() for item in items)
         pool = [item for item in items if item.published_at.date() == latest]
-    readings = prepare_readings(pool, track, topic, mode, overrides, confirmed_events)
+    readings = prepare_readings(pool, track, topic, mode, overrides, confirmed_events,captures)
     eligible_count = len(readings)
     if mode == 'featured':
         shortlist = []

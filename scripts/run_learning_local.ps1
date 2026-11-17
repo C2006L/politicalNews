@@ -16,6 +16,7 @@ if ((Test-Path -LiteralPath $recoveryCredential) -and -not $env:WERSS_RECOVERY_T
 }
 $env:BOOTSTRAP_RECENT_NEWS_ON_STARTUP = '0'
 $env:SCHEDULER_ENABLED = '1'
+$env:OFFICIAL_WEBSITES_ENABLED = '1'
 $env:PYTHONIOENCODING = 'utf-8'
 Set-Location -LiteralPath $projectRoot
 $pythonPath = Join-Path $workspaceRoot '.conda\python.exe'

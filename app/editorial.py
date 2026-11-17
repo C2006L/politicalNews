@@ -85,7 +85,8 @@ def classify(title: str, text: str, source: str = '', url: str = '') -> Selectio
     score = 0
     official = source in {'gov_cn', 'mfa'}
     public_context = bool(re.search(r'APEC|亚太|政策|外交|国务院|改革|经济|两岸|联合国', title + ' ' + body[:500], re.I))
-    analysis = (hit(r'评论员|解读|述评|时政观察|时政.*(?:总结|梳理)|新闻分析|政策解读', title, 'title') or
+    analysis = (hit(r'评论员|人民锐评|人民时评|半月谈评论|解读|述评|时政观察|时政.*(?:总结|梳理)|新闻分析|政策解读', title, 'title') or
+                source in {'banyuetan_web','people_opinion_web'} and bool(re.search(r'政策|治理|民生|政绩|纪律|改革|乡村|经济|发展|干部',title)) or
                 public_context and hit(r'【[^】]{0,10}观察】|东西问|瞩望', title, 'title'))
     policy = hit(r'(?:发布|印发|出台|实施|施行|审议通过|公布).{0,35}(?:政策|条例|办法|方案|意见|规定|法律|规划)|(?:条例|办法|规定).{0,12}(?:施行|实施)|补贴.{0,18}(?:品类|范围).{0,8}(?:扩容|新增|调整)', title, 'title')
     if analysis:

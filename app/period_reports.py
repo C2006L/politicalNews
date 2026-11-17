@@ -29,7 +29,7 @@ def build_report(db: Session, kind: str, day: date, profile: str='general') -> d
     decisions = decision_map(db)
     captures = capture_records(db)
     confirmed = confirmed_event_map(db)
-    readings = prepare_readings(rows, mode='featured', overrides=decisions, confirmed_events=confirmed)
+    readings = prepare_readings(rows, mode='featured', overrides=decisions, confirmed_events=confirmed,captures=captures)
     assessments={row.id:assess(row,profile,decisions,capture_status(row,captures)) for row in rows} if profile!='general' else {}
     # A confirmed event is one group across the week, while unconfirmed reports remain separate.
     groups: dict[str, dict[str, Any]] = {}

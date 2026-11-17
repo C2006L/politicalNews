@@ -21,6 +21,7 @@ from app.review import require_token, password_configured
 from app.models import LearningMaterial, MaterialRevision
 from app.material_sources import sources, route_material
 from app.editorial import decision_map, CATEGORIES
+from app.material_quality import inspect, LABELS
 from typing import Literal
 
 router = APIRouter(tags=["公众号研读"])
@@ -38,7 +39,7 @@ def material_dict(m: LearningMaterial) -> dict[str, Any]:
         snap: dict[str, Any] = latest.snapshot if latest else {"title": m.title, "account": m.account, "url": m.url,
                                               "payload": m.payload, "imported_at": m.imported_at.isoformat() + "Z"}
         return {"id": m.id, "title": snap["title"], "account": snap["account"], "url": snap["url"],
-                "imported_at": snap["imported_at"], **snap["payload"], "revision": revision,
+                "imported_at": snap["imported_at"], **snap["payload"], "quality":inspect(snap['payload'],latest.source_html if latest else None), "revision": revision,
                 "version_url": f"{get_settings().base_path}/learning/{m.id}?revision={revision}" if revision else None}
 
 
@@ -54,7 +55,7 @@ def find_material(material_id: int, revision: int | None = None) -> dict[str, An
             raise HTTPException(404, "资料版本不存在")
         snap = saved.snapshot
         return {"id": m.id, "title": snap["title"], "account": snap["account"], "url": snap["url"],
-                "imported_at": snap["imported_at"], **snap["payload"], "revision": revision,
+                "imported_at": snap["imported_at"], **snap["payload"], "quality":inspect(snap['payload'],saved.source_html), "revision": revision,
                 "version_url": f"{get_settings().base_path}/learning/{m.id}?revision={revision}"}
 
 
@@ -197,6 +198,19 @@ def learning_page(account: str | None = None, page: int = Query(1, ge=1),
     return layout('公众号研读',body)
 
 
+@router.get('/material-quality', response_class=HTMLResponse)
+def material_quality_page() -> HTMLResponse:
+    from collections import Counter
+    with SessionLocal() as db:
+        rows=[material_dict(m) for m in db.query(LearningMaterial).order_by(LearningMaterial.id)]
+    counts=Counter(m['quality']['label'] for m in rows)
+    body='<h1>公众号正文质量</h1><p>检查已保存文字及媒体缺口，不代表已核验原文完整性或事实准确性。</p><p>'+' · '.join(f'{escape(k)} {v} 篇' for k,v in counts.items())+'</p>'
+    for m in rows:
+        q=m['quality']
+        body+=f'<article class="learning-entry"><h2><a href="{escape(get_settings().base_path)}/learning/{m["id"]}">{escape(m["title"])}</a></h2><p>{escape(m["account"])} · {q["label"]} · {q["characters"]} 字 · {q["images"]} 张图片</p></article>'
+    return layout('公众号正文质量',body)
+
+
 @router.get("/learning/{material_id}", response_class=HTMLResponse)
 def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) -> HTMLResponse:
     m = find_material(material_id, revision)
@@ -217,6 +231,7 @@ def learning_detail(material_id: int, revision: int | None = Query(None, ge=1)) 
         body += '<small>版本指本站已保存的内容，不代表公众号刚刚更新。</small></details>'
     body += f'<a href="{escape(m["url"], quote=True)}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>'
     body += bookmark('learning:' + str(m['id']), m['title'], get_settings().base_path + '/learning/' + str(m['id']))
+    body+=f'<p class="report-scope">正文状态：{m["quality"]["label"]} · {m["quality"]["characters"]} 字 · <a href="{base}/material-quality">查看正文质量 →</a></p>'
     from app.material_readout import readout
     highlights = readout(m)
     if highlights:

@@ -171,6 +171,13 @@ def test_materials_use_body_structure_and_never_get_a_forced_daily_slot(client):
         db.commit()
     assert entry(client,1,'material')['category']=='textbook'
     assert entry(client,2,'material')['selected']
+    assert not BeautifulSoup(client.get('/today').text,'html.parser').select('.account-curation a[href="/learning/2"]')
+    from app.revisions import append_revision
+    with SessionLocal() as db:
+        row=db.get(LearningMaterial,2)
+        row.payload={'evidence':[{'id':'L1','text':BODY*3}]}
+        append_revision(db,row,'<div id="js_content"><p>'+BODY*3+'</p></div>')
+        db.commit()
     soup=BeautifulSoup(client.get('/today').text,'html.parser')
     notes=soup.select_one('.account-curation')
     assert not notes.select('a[href="/learning/1"]')
