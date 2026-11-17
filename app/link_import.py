@@ -21,6 +21,16 @@ def literal_number(html: str, names: str) -> str | None:
     return numbers[0] if numbers else None
 
 
+def literal_biz(html: str) -> str | None:
+    """Read only literal base64 alternatives, including WeChat's empty fallback."""
+    assignment=re.search(r'var\s+biz\s*=\s*([^;\n]+)',html)
+    if not assignment:return None
+    expression=assignment[1].strip()
+    if not re.fullmatch(r'''["'][A-Za-z0-9+/=]*["'](?:\s*\|\|\s*["'][A-Za-z0-9+/=]*["'])*''',expression):return None
+    values=re.findall(r'''["']([A-Za-z0-9+/=]+)["']''',expression)
+    return values[0] if values else None
+
+
 def import_cached_link(key: str, url: str, html: str) -> dict[str, int | str]:
     parsed = urlsplit(url)
     if parsed.scheme != 'https' or parsed.netloc != 'mp.weixin.qq.com' or not (re.fullmatch(r'/s/[A-Za-z0-9_~\-]+', parsed.path) or parsed.path == '/s'):
@@ -31,17 +41,17 @@ def import_cached_link(key: str, url: str, html: str) -> dict[str, int | str]:
     soup = BeautifulSoup(html, 'html.parser')
     name = soup.select_one('#js_name')
     title = soup.select_one('meta[property="og:title"]')
-    biz = re.search(r'var\s+biz\s*=\s*[\x22\x27]([^\x22\x27]+)', html)
+    biz = literal_biz(html)
     if not name or name.get_text(' ', strip=True) != source['name'] or not biz or not title:
         raise ValueError('Article identity metadata is missing or mismatched')
-    identity = 'MP_WXS_' + base64.b64decode(biz[1], validate=True).decode()
+    identity = 'MP_WXS_' + base64.b64decode(biz, validate=True).decode()
     if identity != source['mp_id']:
         raise ValueError('Article belongs to a different account')
     if parsed.path == '/s':
         query = parse_qs(parsed.query)
         mid = literal_number(html,'mid|appmsgid')
         idx = literal_number(html,'idx')
-        if query.get('__biz') != [biz[1]] or not mid or not idx or query.get('mid') != [mid] or query.get('idx') != [idx]:
+        if query.get('__biz') != [biz] or not mid or not idx or query.get('mid') != [mid] or query.get('idx') != [idx]:
             raise ValueError('Long article URL does not match page identity')
     payload = extract_material(html)
     payload['import_origin'] = 'user_shared_link'

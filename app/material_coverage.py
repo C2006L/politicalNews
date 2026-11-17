@@ -10,6 +10,7 @@ from app.material_sources import sources
 from app.models import LearningMaterial, MaterialRevision
 from app.material_dates import page_date,recent
 from app.editorial import select_document,decision_map
+from app.material_history import read_state, summarize
 
 REPORT_ROOT=Path(__file__).resolve().parents[2]/'preview'
 
@@ -32,9 +33,12 @@ def coverage() -> dict[str, Any]:
         materials=db.query(LearningMaterial).all()
         counts=Counter(row.account for row in materials)
         dates: dict[int,str]={}
-        for revision in db.query(MaterialRevision).order_by(MaterialRevision.revision):
-            parsed=page_date(revision.source_html)
-            if parsed:dates.setdefault(revision.material_id,parsed)
+        # Full original pages are several MB each; stream the metadata scan
+        # instead of buffering every historical HTML version in the web worker.
+        for material_id,raw in db.query(MaterialRevision.material_id,MaterialRevision.source_html).order_by(MaterialRevision.revision).yield_per(1):
+            if material_id in dates:continue
+            parsed=page_date(raw)
+            if parsed:dates[material_id]=parsed
         overrides=decision_map(db)
         dated=Counter(row.account for row in materials if row.id in dates)
         recent_counts=Counter(row.account for row in materials if recent(dates.get(row.id)))
@@ -44,7 +48,9 @@ def coverage() -> dict[str, Any]:
         observed=observations.get(source['key'])
         recent_batch=recent_observations.get(source['key'])
         link_batch=link_observations.get(source['key'])
+        history=summarize(read_state(source['key']))
         entries.append({'key':source['key'],'name':source['name'],'enabled':source['enabled'],
+                        'history':history,
                         'imported':counts[source['name']],'account_total':None,
                         'dated':dated[source['name']], 'recent_90':recent_counts[source['name']],
                         'recent_affairs':affairs[source['name']], 'date_unknown':counts[source['name']]-dated[source['name']],
@@ -61,7 +67,12 @@ def coverage() -> dict[str, Any]:
                         'state':'verification_required' if (observed or {}).get('blocked') or (link_batch or {}).get('blocked') else
                                 'partial' if observed and (observed.get('remaining') or observed.get('failed')) else
                                 'directory_checked' if observed and observed.get('directories') else 'unknown_directory'})
+        if history['initialized']:
+            entries[-1].update(blocked=history['blocked'], state='verification_required' if history['blocked'] else 'partial',
+                               history_access=history['history_entry']['state'])
     end=datetime.now(ZoneInfo('Asia/Shanghai')).date()
-    return {'total':sum(counts.values()),'at':report.get('at'),'items':entries,
+    latest=max((r['history'].get('updated_at') or 0 for r in entries),default=0)
+    at=datetime.fromtimestamp(latest,ZoneInfo('Asia/Shanghai')).isoformat() if latest else report.get('at')
+    return {'total':sum(counts.values()),'at':at,'items':entries,
             'window':{'start':(end-timedelta(days=89)).isoformat(),'end':end.isoformat(),'days':90,'account_coverage_rate':None},
             'scope':'只统计已知公开目录，不代表全号历史。未知总量不填0；近90天覆盖率尚待核实刊载时间。'}
