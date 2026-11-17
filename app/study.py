@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
@@ -61,7 +62,7 @@ def prepare_readings(items: Sequence[News], track: str = "all", topic: str = "al
     selections = {}
     labels = {}
     for item in items:
-        if mode=='featured' and captures is not None and item.id in captures:
+        if mode=='featured' and captures is not None and (item.id in captures or os.getenv('STRICT_TEXT_QUALITY')=='1'):
             from app.news_quality import capture_status
             if capture_status(item,captures)['status']!='extracted':continue
         decision = select_document(item, overrides)

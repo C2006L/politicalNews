@@ -10,6 +10,8 @@ def setup_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone=settings.scheduled_sync_timezone)
     if os.getenv('OFFICIAL_WEBSITES_ENABLED')=='1':
         scheduler.add_job('app.official_sources:collect','interval',hours=2,id='official_website_supplement',max_instances=1,coalesce=True)
+    if os.getenv('LEGACY_BODY_RECOVERY_ENABLED')=='1':
+        scheduler.add_job('app.news_recovery:run','interval',hours=2,id='legacy_news_body_recovery',max_instances=1,coalesce=True)
     scheduler.add_job(
         "app.sync_service:run_scheduled_sync",
         "interval",

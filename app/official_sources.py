@@ -12,11 +12,20 @@ from app.news_body import extract_body
 SOURCES={
  'banyuetan_web':('半月谈官网', 'www.banyuetan.org', ['http://www.banyuetan.org/byt/banyuetanpinglun/index.html','http://www.banyuetan.org/byt/jicengzhili/index.html','http://www.banyuetan.org/byt/shizhengjiangjie/index.html']),
  'people_opinion_web':('人民网观点·官网','opinion.people.com.cn',['http://opinion.people.com.cn/']),
+ 'dengta_web':('灯塔党建在线·官网','www.dtdjzx.gov.cn',['https://www.dtdjzx.gov.cn/']),
 }
 
 
 def links(raw: str, base: str, host: str) -> list[dict[str,str]]:
     found={}
+    if host=='www.dtdjzx.gov.cn':
+        # Static CMS fields only. Template expressions and scripts are never evaluated.
+        for block in re.findall(r'list\.push\(\{([\s\S]*?)\}\)',raw):
+            fields=dict(re.findall(r'(link|title):\s*`([^`]*)`',block))
+            if not fields.get('link') or not fields.get('title') or '${' in ''.join(fields.values()):continue
+            url=urljoin(base,fields['link']);p=urlsplit(url)
+            if p.hostname==host and p.scheme in {'http','https'} and not p.username and not p.password and re.fullmatch(r'/web/dtdjzx/[a-zA-Z0-9_]+/\d+\.html',p.path):
+                found[url]={'url':url,'title':fields['title']}
     for a in BeautifulSoup(raw,'html.parser').select('a[href]'):
         url=urljoin(base,str(a['href']));p=urlsplit(url);title=a.get_text(' ',strip=True)
         if p.scheme not in {'http','https'} or p.hostname!=host or p.username or p.password:continue
@@ -28,13 +37,22 @@ def links(raw: str, base: str, host: str) -> list[dict[str,str]]:
 def publication(raw: str) -> datetime | None:
     soup=BeautifulSoup(raw,'html.parser')
     values=[str(m.get('content','')) for m in soup.select('meta') if re.search('publish|pubdate|date',str(m.get('name',''))+' '+str(m.get('property','')),re.I)]
-    values += [n.get_text(' ',strip=True) for n in soup.select('.origin,.time,.pubtime,.publish-time,.source,.article-info,.people_list')]
+    values += [n.get_text(' ',strip=True) for n in soup.select('.info-msg,.origin,.time,.pubtime,.publish-time,.source,.article-info,.people_list')]
     for value in values:
         match=re.search(r'(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})',value)
         if match:
             try:return datetime(int(match[1]),int(match[2]),int(match[3]))
             except ValueError:pass
     return None
+
+
+def website_body(raw: str, key: str) -> tuple[str,str,dict[str,Any]]:
+    if key=='dengta_web':
+        match=re.search(r'\bcontent:\s*`((?:\\.|[^`])*)`',raw)
+        if not match or '${' in match[1]:return '', '', {'status':'unverified'}
+        content=re.sub(r'\\([nrt`\\])',lambda m:{'n':'\n','r':'\r','t':'\t','`':'`','\\':'\\'}[m[1]],match[1])
+        return extract_body('<div id="detail_content">'+content+'</div>')
+    return extract_body(raw)
 
 
 def fetch(url: str) -> str:
@@ -92,9 +110,14 @@ def collect(output: Path | None=None, limit: int=12) -> dict[str,Any]:
                 if day is None:row['date_unknown']+=1;attempts[url]['state']='date_unknown';continue
                 if not today-timedelta(days=89)<=day.date()<=today:
                     row['outside_window']+=1;attempts[url].update(state='outside_window',day=str(day.date()));continue
-                summary,body,capture=extract_body(raw)
+                soup=BeautifulSoup(raw,'html.parser')
+                headings=[n.get_text(' ',strip=True) for n in soup.select('h1,title')]
+                norm=lambda value:re.sub(r'\W+','',value)
+                if not any(norm(item['title']) in norm(value) for value in headings):
+                    row['failed'].append({'url':url,'reason':'title_mismatch'});continue
+                summary,body,capture=website_body(raw,key)
                 if capture['status']!='extracted' or len(body)<100:
-                    row['failed'].append({'url':url,'reason':'body_'+capture['status']});continue
+                    row['failed'].append({'url':url,'reason':'insufficient_text' if len(body)<100 else 'body_'+capture['status']});continue
                 row['saved']+=save_news_to_db([{'source':key,'category':'时政','title':item['title'],'link':url,'published':day.isoformat(),'published_at':day,'summary':summary,'content':body,'body_capture':capture}])
                 attempts[url]['state']='saved'
             except Exception as e:row['failed'].append({'url':url,'reason':type(e).__name__})

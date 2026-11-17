@@ -17,7 +17,7 @@ def test_collect_keeps_website_identity_and_is_idempotent(client,monkeypatch,tmp
     from app.models import News
     today=datetime.now().strftime('%Y-%m-%d')
     monkeypatch.setattr(module,'SOURCES',{'banyuetan_web':SOURCES['banyuetan_web']})
-    article=f'<meta name="publishdate" content="{today}"><div id="detail_content"><p>'+('明确基层治理政策实施条件，完善公共服务工作措施。'*12)+'</p></div>'
+    article=f'<h1>基层治理政策实施的评论</h1><meta name="publishdate" content="{today}"><div id="detail_content"><p>'+('明确基层治理政策实施条件，完善公共服务工作措施。'*12)+'</p></div>'
     monkeypatch.setattr(module,'fetch',lambda u:article if '/detail/' in u else '<a href="/pl/detail/20261117/123_1.html">基层治理政策实施的评论</a>')
     monkeypatch.setattr(module.time,'sleep',lambda _:None)
     assert collect(tmp_path,2)['sources'][0]['saved']==1
@@ -45,10 +45,21 @@ def test_existing_links_do_not_consume_batch_budget(client,monkeypatch,tmp_path)
     listing=''.join(f'<a href="/pl/detail/20261117/{i}_1.html">基层治理政策解读文章{i}</a>' for i in range(3))
     fetched=[]
     def fetch(url):
-        if '/detail/' in url:fetched.append(url);return raw
+        if '/detail/' in url:
+            fetched.append(url);index=url.rsplit('/',1)[-1].split('_')[0]
+            return '<h1>基层治理政策解读文章'+index+'</h1>'+raw
         return listing
     monkeypatch.setattr(module,'fetch',fetch);monkeypatch.setattr(module.time,'sleep',lambda _:None)
     assert collect(tmp_path,1)['sources'][0]['saved']==1
     second=collect(tmp_path,1)['sources'][0]
     assert second['saved']==1 and second['existing']==1 and second['not_attempted']==1
     assert len(set(fetched))==2
+
+
+def test_dengta_static_literals_are_read_without_running_scripts():
+    from app.official_sources import website_body
+    raw='list.push({link: `/web/dtdjzx/test/123.html`,title: `基层治理的公开文章`});list.push({link: `${evil()}`,title: `不执行脚本表达式`})'
+    found=links(raw,'https://www.dtdjzx.gov.cn/','www.dtdjzx.gov.cn')
+    assert len(found)==1 and found[0]['url'].endswith('/123.html')
+    assert website_body('content: `<p>依法实施基层治理改革，明确政策条件和适用范围。</p>`','dengta_web')[2]['status']=='extracted'
+    assert website_body('content: `${evil()}`','dengta_web')[2]['status']=='unverified'

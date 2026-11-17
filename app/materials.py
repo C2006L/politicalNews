@@ -195,6 +195,16 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
                 result["rejected"] += 1
                 result[exc.reason] += 1
                 continue
+            if material is not None and material.title==title and material.url==url:
+                latest=db.query(MaterialRevision).filter_by(material_id=material.id).order_by(MaterialRevision.revision.desc()).first()
+                if latest and latest.source_html and 'js_content' in latest.source_html and 'js_content' not in html:
+                    normalize=lambda value:re.sub(r'\s+','',value)
+                    previous=normalize(''.join(p['text'] for p in material.payload.get('evidence',[])))
+                    incoming=normalize(''.join(p['text'] for p in payload.get('evidence',[])))
+                    if incoming and incoming in previous:
+                        # A converted subset must not downgrade a recovered full page.
+                        result['skipped']+=1
+                        continue
             if material is None:
                 material = LearningMaterial(source_id=source_id)
                 db.add(material)
