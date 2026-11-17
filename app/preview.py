@@ -1,6 +1,7 @@
 """Isolated, read-only sharing gateway. Never imports the main app or starts jobs."""
 import asyncio
 import re
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request as URLRequest, HTTPRedirectHandler, ProxyHandler, build_opener
@@ -28,7 +29,7 @@ def allowed(path: str) -> bool:
 
 
 class NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
         return None
 
 
@@ -52,7 +53,7 @@ def reading_html(data: bytes) -> bytes:
     for element in soup.select('.report-save, .event-review-actions, [data-event-history]'):
         element.decompose()
     for link in soup.select('a[href]'):
-        target = urlsplit(link['href'])
+        target = urlsplit(str(link['href']))
         if not target.scheme and target.path.startswith('/') and not allowed(target.path):
             link.replace_with(link.get_text())
     banner = soup.new_tag('div', attrs={'class': 'preview-banner'})
