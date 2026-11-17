@@ -12,6 +12,15 @@ from app.models import LearningMaterial, MaterialRevision
 from app.revisions import append_revision
 
 
+def literal_number(html: str, names: str) -> str | None:
+    assignment=re.search(r'var\s+(?:'+names+r')\s*=\s*([^;\n]+)',html)
+    if not assignment:return None
+    value=assignment[1].strip()
+    if not re.fullmatch(r'''["']\d*["'](?:\s*\|\|\s*["']\d*["'])*''',value):return None
+    numbers=re.findall(r'''["'](\d+)["']''',value)
+    return numbers[0] if numbers else None
+
+
 def import_cached_link(key: str, url: str, html: str) -> dict[str, int | str]:
     parsed = urlsplit(url)
     if parsed.scheme != 'https' or parsed.netloc != 'mp.weixin.qq.com' or not (re.fullmatch(r'/s/[A-Za-z0-9_~\-]+', parsed.path) or parsed.path == '/s'):
@@ -30,9 +39,9 @@ def import_cached_link(key: str, url: str, html: str) -> dict[str, int | str]:
         raise ValueError('Article belongs to a different account')
     if parsed.path == '/s':
         query = parse_qs(parsed.query)
-        mid = re.search(r'var\s+(?:mid|appmsgid)\s*=\s*[\x22\x27](\d+)', html)
-        idx = re.search(r'var\s+idx\s*=\s*[\x22\x27](\d+)', html)
-        if query.get('__biz') != [biz[1]] or not mid or not idx or query.get('mid') != [mid[1]] or query.get('idx') != [idx[1]]:
+        mid = literal_number(html,'mid|appmsgid')
+        idx = literal_number(html,'idx')
+        if query.get('__biz') != [biz[1]] or not mid or not idx or query.get('mid') != [mid] or query.get('idx') != [idx]:
             raise ValueError('Long article URL does not match page identity')
     payload = extract_material(html)
     payload['import_origin'] = 'user_shared_link'

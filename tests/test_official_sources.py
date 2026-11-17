@@ -63,3 +63,16 @@ def test_dengta_static_literals_are_read_without_running_scripts():
     assert len(found)==1 and found[0]['url'].endswith('/123.html')
     assert website_body('content: `<p>依法实施基层治理改革，明确政策条件和适用范围。</p>`','dengta_web')[2]['status']=='extracted'
     assert website_body('content: `${evil()}`','dengta_web')[2]['status']=='unverified'
+
+
+def test_official_fetch_decodes_gzip_and_declared_chinese_encoding(monkeypatch):
+    import app.official_sources as module
+    import gzip
+    from email.message import Message
+    from unittest.mock import MagicMock
+    text='<meta charset="gb18030"><h1>制度型开放的理论要义与实践探索</h1>'
+    headers=Message();headers['Content-Encoding']='gzip'
+    response=MagicMock();response.read.return_value=gzip.compress(text.encode('gb18030'));response.headers=headers
+    opener=MagicMock();opener.open.return_value.__enter__.return_value=response
+    monkeypatch.setattr(module,'build_opener',lambda *args:opener)
+    assert module.fetch('http://theory.gmw.cn/article.htm')==text

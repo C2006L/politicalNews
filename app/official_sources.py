@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, HTTPRedirectHandler, build_opener
 import hashlib,json,re,time
+import gzip,io,zlib
 from bs4 import BeautifulSoup
 from typing import Any,cast
 from app.fetch_news import save_news_to_db
@@ -63,8 +64,17 @@ def fetch(url: str) -> str:
     with build_opener(SameHostRedirect()).open(Request(url,headers={'User-Agent':'Mozilla/5.0'}),timeout=15) as r:
         raw=r.read(6_000_001)
         if len(raw)>6_000_000:raise ValueError('response_too_large')
-        charset=r.headers.get_content_charset() or 'utf-8'
-        return cast(str,raw.decode(charset,errors='replace'))
+        encoding=r.headers.get('Content-Encoding','').lower()
+        if encoding=='gzip' or raw.startswith(b'\x1f\x8b'):
+            raw=gzip.GzipFile(fileobj=io.BytesIO(raw)).read(6_000_001)
+        elif encoding=='deflate':raw=zlib.decompressobj().decompress(raw,6_000_001)
+        if len(raw)>6_000_000:raise ValueError('expanded_response_too_large')
+        declared=re.search(br'''charset\s*=\s*["']?\s*([\w-]+)''',raw[:4096],re.I)
+        charset=declared[1].decode('ascii') if declared else r.headers.get_content_charset() or 'utf-8'
+        for encoding in dict.fromkeys([charset,'utf-8','gb18030']):
+            try:return cast(str,raw.decode(encoding,errors='strict'))
+            except (UnicodeDecodeError,LookupError):pass
+        return cast(str,raw.decode('utf-8',errors='replace'))
 
 
 def collect(output: Path | None=None, limit: int=12) -> dict[str,Any]:

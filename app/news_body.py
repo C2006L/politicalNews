@@ -4,7 +4,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 METHOD='body-extract-2'
-CONTAINERS=('#detail_content','#UCAP-CONTENT','.pages_content','.rm_txt_con','#articleText','#article_p',
+CONTAINERS=('#ContentPh','.h-contentMain','#detailContent','#detail_content','#UCAP-CONTENT','.pages_content','.rm_txt_con','#articleText','#article_p','.word',
             '.article-content','.content_area','.left_zw','.news-article','.TRS_Editor','#ozoom','.article','.content','main')
 
 

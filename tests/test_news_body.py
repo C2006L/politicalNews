@@ -6,6 +6,13 @@ from tests.test_events import row
 from unittest.mock import patch,MagicMock
 
 
+def test_xinhua_span_container_is_explicit_body_not_fallback():
+    raw='<nav><p>站点导航内容</p></nav><span id="detailContent"><p>这是已确认的新华网正文，保留政策适用范围和实施条件。</p></span>'
+    _,body,meta=extract_body(raw)
+    assert meta['status']=='extracted' and meta['selector']=='#detailContent'
+    assert '站点导航' not in body
+
+
 def test_long_article_keeps_all_paragraphs_and_short_quotes_inside_form():
     parts=['正文段落'+str(i)+'，政策措施和具体条件需要保留原文，不能因为超过1200字而提前停止。'*4 for i in range(20)]
     parts.insert(5,'“不会。”')

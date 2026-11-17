@@ -48,3 +48,12 @@ def test_long_album_url_requires_matching_page_article_identity(client):
     assert import_cached_link('xiao',good,html)['state']=='imported'
     for bad in [good.replace('mid=123456789','mid=987654321'),good.replace('idx=1','idx=2'),good.replace('MzI0MzAxMzQzNA==','MzA4MDUwMzAxNA==')]:
         with pytest.raises(ValueError):import_cached_link('xiao',bad,html)
+
+
+def test_identity_accepts_literal_fallback_but_never_executes_expressions(client):
+    good='https://mp.weixin.qq.com/s?__biz=MzI0MzAxMzQzNA==&mid=123456789&idx=1'
+    literal=HTML+'''<script>var mid="" || "123456789";var idx='' || '1';</script>'''
+    assert import_cached_link('xiao',good,literal)['state']=='imported'
+    for expression in ['"" || getMid()', '"" || "987654321"', '"123456789" + "0"']:
+        raw=HTML+'<script>var mid='+expression+';var idx="1";</script>'
+        with pytest.raises(ValueError):import_cached_link('xiao',good,raw)
