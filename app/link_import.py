@@ -10,6 +10,7 @@ from app.material_sources import sources
 from app.materials import extract_material, EXTRACTOR_VERSION, LOCK, ImportBusy
 from app.models import LearningMaterial, MaterialRevision
 from app.revisions import append_revision
+from app.material_originals import accept
 
 
 def literal_number(html: str, names: str) -> str | None:
@@ -67,7 +68,14 @@ def import_cached_link(key: str, url: str, html: str) -> dict[str, int | str]:
             db.connection().exec_driver_sql('BEGIN IMMEDIATE')
             material = db.query(LearningMaterial).filter_by(url=url, account=source['name']).first()
             if material and material.fingerprint == fingerprint:
+                accept(db, material.id)
+                db.commit()
                 return {'id': material.id, 'state': 'unchanged'}
+            previous_fragment = None
+            if material:
+                old = db.query(MaterialRevision).filter_by(material_id=material.id).order_by(MaterialRevision.revision.desc()).first()
+                if old and old.source_html and 'js_content' not in old.source_html:
+                    previous_fragment = material.fingerprint
             if material is None:
                 material = LearningMaterial(source_id='shared-link:' + hashlib.sha256(url.encode()).hexdigest())
                 db.add(material)
@@ -78,6 +86,7 @@ def import_cached_link(key: str, url: str, html: str) -> dict[str, int | str]:
             material.imported_at = datetime.now(timezone.utc).replace(tzinfo=None)
             revision = append_revision(db, material, html)
             material_id = material.id
+            accept(db, material_id, previous_fragment)
             db.commit()
             return {'id': material_id, 'state': 'imported', 'revision': revision}
     finally:

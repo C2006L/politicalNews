@@ -38,6 +38,8 @@ def coverage_page() -> HTMLResponse:
     for row in data['items']:
         body+=f'<article class="learning-entry"><h2>{escape(row["name"])}</h2><p>本站保存 {row["imported"]} 条文章记录 · {states[row["state"]]} · 全号历史总量未知</p>'
         body+=f'<p>页面元数据日期 {row["dated"]} 篇 · 近90天收录 {row["recent_90"]} 篇 · 其中时政初筛候选 {row["recent_affairs"]} 篇 · 日期待核实 {row["date_unknown"]} 篇</p>'
+        if row['original_updates_pending']:
+            body+=f'<p>上游片段有变化、原页待复查 {row["original_updates_pending"]} 篇；当前保留已存原页，不把片段变化当成原文已更新。</p>'
         history=row.get('history',{})
         if history.get('initialized'):
             body+=f'<p>持续补采清单：发现 {history["discovered"]} 条独立链接 · 其中正文可读 {history["body_available"]} 篇 · 近90天时政待补 {history["pending"]} 条 · 待重试 {history["retry"]} 条 · 需人工检查 {history["failed"]} 条</p>'

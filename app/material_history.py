@@ -27,6 +27,7 @@ from app.material_dates import page_date, recent
 from app.material_quality import inspect
 from app.material_sources import sources
 from app.materials import extract_material
+from app.material_originals import read as read_original_updates
 from app.models import AppState, LearningMaterial, MaterialRevision
 from app.public_albums import article_identity, parse_directory
 
@@ -189,6 +190,7 @@ def seed(state: dict[str, Any], source: dict[str, Any]) -> dict[str, dict[str, A
     known: dict[str, dict[str, Any]] = {}
     biz = biz_for(source)
     with SessionLocal() as db:
+        original_updates = read_original_updates(db)
         for material in db.query(LearningMaterial).filter_by(account=source['name']):
             revision = db.query(MaterialRevision).filter_by(material_id=material.id).order_by(MaterialRevision.revision.desc()).first()
             raw = revision.source_html if revision else ''
@@ -200,9 +202,10 @@ def seed(state: dict[str, Any], source: dict[str, Any]) -> dict[str, dict[str, A
                 continue
             queued = next(r for r in state['items'].values() if r['identity'] == alias or alias in r.get('aliases', []))
             quality = inspect(material.payload or {}, raw)
+            needs_refresh = bool(original_updates.get(str(material.id), {}).get('pending_fragment'))
             # Repair an existing imported fragment independently of whether its
             # content qualifies for a new current-affairs import.
-            if quality['raw_kind'] != 'full_page':
+            if quality['raw_kind'] != 'full_page' or needs_refresh:
                 queued.update(material_id=material.id, needs_body=True, url=material.url)
                 if queued['status'] in {'existing', 'imported', 'excluded'}:
                     queued['status'] = 'pending'
@@ -214,8 +217,8 @@ def seed(state: dict[str, Any], source: dict[str, Any]) -> dict[str, dict[str, A
             item.update(day=page_date(raw), category=classify(material.title, BeautifulSoup(raw, 'html.parser').get_text(' ', strip=True), source['name'], material.url).category)
             discover(state, raw, identity, biz)
             item['quality'] = quality['status']
-            item['needs_body'] = quality['raw_kind'] != 'full_page'
-            if item['quality'] == 'readable':
+            item['needs_body'] = quality['raw_kind'] != 'full_page' or needs_refresh
+            if item['quality'] == 'readable' and not needs_refresh:
                 item.update(status='existing', material_id=material.id)
                 known[identity] = item
     return known

@@ -11,6 +11,7 @@ from app.models import LearningMaterial, MaterialRevision
 from app.material_dates import page_date,recent
 from app.editorial import select_document,decision_map
 from app.material_history import read_state, summarize
+from app.material_originals import read as read_original_updates
 
 REPORT_ROOT=Path(__file__).resolve().parents[2]/'preview'
 
@@ -32,6 +33,8 @@ def coverage() -> dict[str, Any]:
     with SessionLocal() as db:
         materials=db.query(LearningMaterial).all()
         counts=Counter(row.account for row in materials)
+        updates=read_original_updates(db)
+        pending_originals=Counter(row.account for row in materials if updates.get(str(row.id),{}).get('pending_fragment'))
         dates: dict[int,str]={}
         # Full original pages are several MB each; stream the metadata scan
         # instead of buffering every historical HTML version in the web worker.
@@ -51,6 +54,7 @@ def coverage() -> dict[str, Any]:
         history=summarize(read_state(source['key']))
         entries.append({'key':source['key'],'name':source['name'],'enabled':source['enabled'],
                         'history':history,
+                        'original_updates_pending':pending_originals[source['name']],
                         'imported':counts[source['name']],'account_total':None,
                         'dated':dated[source['name']], 'recent_90':recent_counts[source['name']],
                         'recent_affairs':affairs[source['name']], 'date_unknown':counts[source['name']]-dated[source['name']],

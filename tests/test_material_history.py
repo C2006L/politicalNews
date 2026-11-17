@@ -1,5 +1,6 @@
 """History correctness: real DB imports with offline, deterministic transports."""
 from datetime import date, datetime, time as day_time, timezone
+from contextlib import closing
 import json
 import time
 
@@ -265,3 +266,50 @@ def test_existing_alias_fragment_is_repaired_even_when_canonical_body_already_ex
     with SessionLocal() as db:
         assert db.query(LearningMaterial).count() == 2  # Preserve already issued IDs and references.
         assert latest_quality(db, db.get(LearningMaterial, original_id))['status'] == 'readable'
+
+
+@pytest.mark.parametrize('upstream_title', ['国务院印发乡村振兴实施方案', '上游转换后的新标题'])
+def test_changed_upstream_fragment_preserves_original_and_queues_one_verified_refresh(tmp_path, monkeypatch, upstream_title):
+    import sqlite3
+    from app.link_import import import_cached_link
+    from app.materials import sync_materials
+    from app.material_originals import read as original_updates
+    from app.material_quality import latest_quality
+    source = tmp_path / 'werss.db'
+    raw = page('1')
+    original = import_cached_link('xiao', url('1'), raw)
+    fragment = '<p>' + '上游转换片段的排序和格式变化，必须复查原页而不是直接替换已保存正文。' * 8 + '</p>'
+    with closing(sqlite3.connect(source)) as db, db:
+        db.execute('create table articles(id,mp_id,title,url,content_html,has_content,create_time)')
+        db.execute('insert into articles values(?,?,?,?,?,1,1)',
+                   ('upstream', 'MP_WXS_3243013434', upstream_title, url('1'), fragment))
+    monkeypatch.setenv('WERSS_DATABASE_PATH', str(source))
+    assert sync_materials()['updated'] == 0
+    with SessionLocal() as db:
+        assert latest_quality(db, db.get(LearningMaterial, original['id']))['status'] == 'readable'
+        assert original_updates(db)[str(original['id'])]['pending_fragment']
+    result = run_batch('xiao', lambda _: raw, max_articles=1, max_pages=0, pause=0)
+    assert result['batch']['article_requests'] == 1
+    with SessionLocal() as db:
+        assert original_updates(db)[str(original['id'])]['pending_fragment'] is None
+    assert sync_materials()['updated'] == 0
+    result = run_batch('xiao', lambda _: pytest.fail('Accepted fragment must not reschedule a fetch'), pause=0)
+    assert result['body_available'] == 1 and result['batch']['article_requests'] == 0
+
+
+def test_repaired_fragment_is_not_downgraded_on_restart_sync(tmp_path, monkeypatch):
+    import sqlite3
+    from app.materials import sync_materials
+    from app.material_quality import latest_quality
+    source = tmp_path / 'werss.db'
+    fragment = '<p>' + '已有片段与规范原文排版不同，还包含转换过程中的附加链接文字。' * 8 + '</p>'
+    with closing(sqlite3.connect(source)) as db, db:
+        db.execute('create table articles(id,mp_id,title,url,content_html,has_content,create_time)')
+        db.execute('insert into articles values(?,?,?,?,?,1,1)',
+                   ('upstream', 'MP_WXS_3243013434', '国务院印发乡村振兴实施方案', url('1'), fragment))
+    monkeypatch.setenv('WERSS_DATABASE_PATH', str(source))
+    assert sync_materials()['added'] == 1
+    run_batch('xiao', lambda _: page('1'), max_articles=1, max_pages=0, pause=0)
+    assert sync_materials()['updated'] == 0
+    with SessionLocal() as db:
+        assert latest_quality(db, db.query(LearningMaterial).one())['status'] == 'readable'
