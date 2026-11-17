@@ -66,22 +66,47 @@ def collect(output: Path | None=None, limit: int=12) -> dict[str,Any]:
                 candidates.update({x['url']:x for x in links(raw,url,host)})
             except Exception as e:row['failed'].append({'url':url,'reason':type(e).__name__})
         row['discovered']=len(candidates)
-        for item in list(candidates.values())[:max(1,min(limit,30))]:
+        # Existing links do not consume the download budget; later runs reach older entries.
+        attempted=0
+        with SessionLocal() as db:
+            prior=db.get(AppState,'official_queue:'+key)
+            try:attempts=json.loads(prior.value) if prior else {}
+            except ValueError:attempts={}
+        def last_attempt(item: dict[str,str]) -> str:
+            value=attempts.get(item['url'],'')
+            return value.get('at','') if isinstance(value,dict) else str(value)
+        queue=sorted(candidates.values(),key=last_attempt)
+        for item in queue:
             url=item['url']
             with SessionLocal() as db:exists=db.query(News.id).filter_by(link=url).first()
             if exists:row['existing']+=1;continue
+            prior_attempt=attempts.get(url)
+            if isinstance(prior_attempt,dict) and prior_attempt.get('state')=='outside_window' and prior_attempt.get('day','9999')<str(today-timedelta(days=89)):
+                row['outside_window']+=1;continue
+            if attempted>=max(1,min(limit,30)):continue
+            attempted+=1;attempts[url]={'at':datetime.now().isoformat(),'state':'requested'}
             try:
                 raw=fetch(url)
                 if output:(output/(hashlib.sha256(url.encode()).hexdigest()+'.html')).write_text(raw,encoding='utf-8')
                 day=publication(raw)
-                if day is None:row['date_unknown']+=1;continue
-                if not today-timedelta(days=89)<=day.date()<=today:row['outside_window']+=1;continue
+                if day is None:row['date_unknown']+=1;attempts[url]['state']='date_unknown';continue
+                if not today-timedelta(days=89)<=day.date()<=today:
+                    row['outside_window']+=1;attempts[url].update(state='outside_window',day=str(day.date()));continue
                 summary,body,capture=extract_body(raw)
                 if capture['status']!='extracted' or len(body)<100:
                     row['failed'].append({'url':url,'reason':'body_'+capture['status']});continue
                 row['saved']+=save_news_to_db([{'source':key,'category':'时政','title':item['title'],'link':url,'published':day.isoformat(),'published_at':day,'summary':summary,'content':body,'body_capture':capture}])
+                attempts[url]['state']='saved'
             except Exception as e:row['failed'].append({'url':url,'reason':type(e).__name__})
             finally:time.sleep(1)
+        row['attempted']=attempted
+        with SessionLocal() as db:known={r.link for r in db.query(News).filter(News.link.in_(list(candidates)))}
+        row['not_attempted']=sum(url not in attempts and url not in known for url in candidates)
+        with SessionLocal() as db:
+            prior=db.get(AppState,'official_queue:'+key)
+            if prior:prior.value=json.dumps(attempts)
+            else:db.add(AppState(key='official_queue:'+key,value=json.dumps(attempts)))
+            db.commit()
         report['sources'].append(row)
         if output:(output/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     with SessionLocal() as db:

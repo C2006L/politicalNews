@@ -207,7 +207,7 @@ def material_quality_page() -> HTMLResponse:
     body='<h1>公众号正文质量</h1><p>检查已保存文字及媒体缺口，不代表已核验原文完整性或事实准确性。</p><p>'+' · '.join(f'{escape(k)} {v} 篇' for k,v in counts.items())+'</p>'
     for m in rows:
         q=m['quality']
-        body+=f'<article class="learning-entry"><h2><a href="{escape(get_settings().base_path)}/learning/{m["id"]}">{escape(m["title"])}</a></h2><p>{escape(m["account"])} · {q["label"]} · {q["characters"]} 字 · {q["images"]} 张图片</p></article>'
+        body+=f'<article class="learning-entry"><h2><a href="{escape(get_settings().base_path)}/learning/{m["id"]}">{escape(m["title"])}</a></h2><p>{escape(m["account"])} · {q["label"]} · {q["characters"]} 字 · {q["images"]} 张图片</p><p>{q["reason"]}</p></article>'
     return layout('公众号正文质量',body)
 
 

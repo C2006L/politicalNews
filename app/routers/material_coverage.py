@@ -30,6 +30,8 @@ def coverage_page() -> HTMLResponse:
         body+='<section class="learning-entry"><h2>官方网站补充</h2><p>独立收录在时政资料库，不计入公众号篇数或历史覆盖率。每批有限额，并非近90天全量。</p>'
         for item in website.get('sources',[]):
             body+=f'<p><a href="{base}/source/{escape(item["source"])}">{escape(item["label"])} →</a> · 本批新增 {item["saved"]} 篇 · 已有 {item["existing"]} 篇 · 日期未知 {item["date_unknown"]} 篇 · 失败 {len(item["failed"])} 条</p>'
+            if 'not_attempted' in item:
+                body+=f'<p>已发现链接 {item["discovered"]} 条 · 本批请求 {item["attempted"]} 条 · 尚未尝试 {item["not_attempted"]} 条。这里只说明当前栏目清单的进度，不是全号90天覆盖率。</p>'
         body+='</section>'
     states={'verification_required':'遇到平台验证','partial':'仍有缺口','directory_checked':'本批目录已检查','unknown_directory':'未掌握完整目录'}
     ends={'declared_directory_covered':'目录链接已发现完，正文另行核对','directory_end':'已到公开目录末尾','repeated_or_empty_page':'返回重复或空页，仍需核查','repeated_cursor':'分页未前进','page_limit':'达到本批页数上限','ValueError':'页面需验证或目录无法解析'}

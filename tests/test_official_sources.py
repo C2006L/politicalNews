@@ -35,3 +35,20 @@ def test_quality_failure_stays_out_of_featured_but_remains_in_all(client):
     captures={row.id:{'status':'partial','fingerprint':hashlib.sha256(row.content.encode()).hexdigest()}}
     assert prepare_readings([row],mode='featured',captures=captures)==[]
     assert len(prepare_readings([row],mode='all',captures=captures))==1
+
+
+def test_existing_links_do_not_consume_batch_budget(client,monkeypatch,tmp_path):
+    import app.official_sources as module
+    monkeypatch.setattr(module,'SOURCES',{'banyuetan_web':SOURCES['banyuetan_web']})
+    today=datetime.now().strftime('%Y-%m-%d')
+    raw=f'<meta name="publishdate" content="{today}"><div id="detail_content"><p>'+('公共服务改革明确适用范围和实施条件。'*15)+'</p></div>'
+    listing=''.join(f'<a href="/pl/detail/20261117/{i}_1.html">基层治理政策解读文章{i}</a>' for i in range(3))
+    fetched=[]
+    def fetch(url):
+        if '/detail/' in url:fetched.append(url);return raw
+        return listing
+    monkeypatch.setattr(module,'fetch',fetch);monkeypatch.setattr(module.time,'sleep',lambda _:None)
+    assert collect(tmp_path,1)['sources'][0]['saved']==1
+    second=collect(tmp_path,1)['sources'][0]
+    assert second['saved']==1 and second['existing']==1 and second['not_attempted']==1
+    assert len(set(fetched))==2
