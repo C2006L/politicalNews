@@ -71,7 +71,7 @@ def test_materials_remain_ready_when_news_failed_and_no_recall_items(client,tmp_
     assert state['state']=='ready' and state['news_state']=='no_content'
     assert state['material_count']==1 and state['recall_entry_count']==state['knowledge_count']==0
     listing=client.get('/learning').text
-    assert '原文资料 · 暂未识别' in listing and '阅读原文资料' in listing
+    assert '原文资料 · 阅读已保存的文字正文' in listing and '阅读原文资料' in listing
     assert '第一次用？先试一道题' not in listing
     material=client.get('/api/learning').json()['items'][0]
     detail=client.get(f'/learning/{material["id"]}').text

@@ -76,7 +76,13 @@ def test_import_versions_keep_old_evidence_and_material_id(tmp_path, monkeypatch
     assert old['title'] == '第一版' and current['title'] == '修订标题'
     assert old['revision'] == 1 and current['revision'] == 2
     assert '旧的限定' in old['evidence'][2]['text']
-    assert client.get('/learning/1?revision=1').status_code == 200
+    from bs4 import BeautifulSoup
+    old_page = BeautifulSoup(client.get('/learning/1?revision=1').text, 'html.parser')
+    assert old_page.select_one('.material-version a')['href'] == '/learning/1'
+    latest_page = BeautifulSoup(client.get('/learning/1').text, 'html.parser')
+    assert '已是最新保存版本' in latest_page.select_one('.material-version').text
+    assert not latest_page.select_one('.material-version a[href="/learning/1"]')
+    assert latest_page.select_one('.material-version a')['href'] == '/learning/1?revision=1'
     assert client.get('/api/learning/1/revisions/999').status_code == 404
     with SessionLocal() as db:
         assert db.query(LearningMaterial).count() == 1

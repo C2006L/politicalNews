@@ -92,3 +92,27 @@
 @media(min-width:1500px){.reference-shell{margin-left:auto;margin-right:auto}}
 @media(max-width:1050px){.reference-page .layout{grid-template-columns:minmax(0,1fr) 240px;gap:24px}.reference-page .side-stack{padding-left:20px}.reference-page .category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.reference-shell{margin:0 20px;padding-bottom:20px}.reference-page .hero{padding-top:25px}.reference-page .hero h1{font-size:34px}.reference-page .hero>p{font-size:13px;margin-bottom:19px}.reference-page .nav-row{gap:22px}.reference-page .nav-link{font-size:12px;padding:11px 0}.reference-page .search-form{flex-wrap:wrap;gap:10px}.reference-page .search-form input{flex-basis:100%;font-size:16px;padding:8px 0}.reference-page .search-form select{flex:1;min-width:0}.reference-page .toolbar-note{font-size:10px}.reference-page .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 0;padding:20px 0;margin-bottom:25px}.reference-page .stat{padding-left:17px}.reference-page .stat:nth-child(odd){padding-left:0;border-left:0}.reference-page .stat span{font-size:21px}.reference-page .layout{display:flex;flex-direction:column;gap:30px}.reference-page .main-stack,.reference-page .side-stack{width:100%;gap:25px}.reference-page .side-stack{border-left:0;border-top:1px solid var(--ink);padding:24px 0 0}.reference-page .panel h2{font-size:23px}.reference-page .panel-head{gap:10px;flex-wrap:wrap}.reference-page .news-card{padding:21px 0}.reference-page .news-card h4{font-size:22px}.reference-page .news-card p{font-size:14px}.reference-page .category-card{padding:16px 8px 16px 0}.reference-page .category-card strong{font-size:20px}.reference-page summary.month-title span{font-size:22px}.reference-page .month-body{padding-left:12px}.reference-page .article-body{font-size:16px}.reference-page .article-meta-grid,.reference-page .sync-grid{grid-template-columns:1fr}.reference-page .eyebrow{font-size:9px}.reference-page .site-footer{padding-bottom:0}}
+/* Browsing follows one sequence: choose a scope, then read its results. */
+.reference-page .focused-layout{display:block;max-width:1120px;}
+.reference-page .focused-layout>.side-stack{display:none;}
+.browse-controls{border-top:3px solid var(--ink);margin:8px 0 24px;}
+.browse-label{font-size:11px;color:var(--muted);letter-spacing:1px;margin:16px 0 8px;}
+.browse-categories{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 26px;}
+.browse-categories a{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:12px 0;border-bottom:1px solid var(--line);font:20px/1.7 SimSun,serif;}
+.browse-categories small{font:12px Georgia,serif;color:var(--muted);}
+.browse-categories a[aria-current]{color:var(--red);border-bottom:2px solid var(--red);}
+.browse-source{display:flex;align-items:center;flex-wrap:wrap;gap:12px 18px;padding:20px 0;border-bottom:1px solid var(--line);font-size:13px;}
+.browse-source label{display:flex;align-items:center;gap:10px;max-width:100%;}
+.browse-source select{min-width:0;max-width:100%;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);padding:8px;}
+.browse-source>a{font-size:12px;color:var(--muted);}
+.archive-controls{border-top:3px solid var(--ink);margin:8px 0 24px;}
+.maintenance-links{margin-bottom:16px;font-size:12px;}
+.maintenance-links summary{cursor:pointer;margin-bottom:9px;}
+@media(max-width:700px){.browse-categories{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;}.browse-categories a{font-size:18px;padding:10px 0;}.browse-source{gap:12px;}.browse-source label{width:100%;}.browse-source select{flex:1;}.reference-page .focused-layout .news-card h3{font-size:20px;}}
+.reference-page .news-card .card-actions{align-items:center;gap:12px 22px;}
+.reference-page .news-card .card-actions>a,.reference-page .news-card .card-actions>button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0;min-height:38px;padding:8px 0;border:0;border-bottom:1px solid transparent;background:transparent;font-family:inherit;font-size:12px;line-height:1.5;color:var(--ink);white-space:nowrap;}
+.reference-page .news-card .card-actions>a:first-child{border-bottom-color:#9ca496;}
+.reference-page .news-card .card-actions>button{color:var(--muted);}
+.reference-page .news-card .card-actions>button[aria-pressed=true]{color:var(--red);}
+.reference-page .site-footer{display:block;}
+@media(max-width:700px){.reference-page .news-card .card-actions>a,.reference-page .news-card .card-actions>button{min-height:44px;}}

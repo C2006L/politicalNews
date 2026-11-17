@@ -24,7 +24,7 @@ def import_page() -> HTMLResponse:
 <p><a href="{base}/review">设置管理口令 →</a> · <a href="{base}/status">完整同步状态 →</a></p>
 <h2>主动检查最新文章通道</h2><p data-upstream-state role="status">正在读取检查记录…</p>
 <p data-upstream-time></p><div data-upstream-accounts></div>
-<p>检查针对两个已订阅公众号的最新文章入口，不抓取正文。通过只表示检查时目标入口可访问，不等于登录永久有效，也不证明内容已采全。</p>
+<p>检查针对当前启用公众号的最新文章入口，不抓取正文。通过只表示检查时目标入口可访问，不等于登录永久有效，也不证明内容已采全。</p>
 <p>超过两小时的结果会标为过时；主动检查至少间隔一分钟。</p>
 <h2>上游文章库</h2>
 <p data-source-state role="status"></p><div data-source-accounts></div>
@@ -32,7 +32,7 @@ def import_page() -> HTMLResponse:
 <section><h2>已经取得哪些学习材料？</h2><p data-coverage-note></p><div data-coverage-accounts></div>
 <p>“尚无自测条目”仍可阅读已取得原文。文字整理不包含图片题识别、音频转写或教材核对。</p></section>
 <section data-body-recovery data-base="{base}"><h2>恢复已知缺正文</h2>
-<p>只处理两个已订阅账号中已经发现、但尚无正文的文章。每次最多 3 篇排队，逐篇重取；未知历史文章不会因此自动补齐。</p>
+<p>只处理当前启用账号中已经发现、但尚无正文的文章。每次最多 3 篇排队，逐篇重取；未知历史文章不会因此自动补齐。</p>
 <p>沿用上方管理口令。任务已提交不代表正文已恢复，只有有效正文实际出现并导入后才显示完成。</p>
 <p data-recovery-summary role="status" aria-live="polite">正在检查恢复队列…</p>
 <p><button type="button" data-recovery-start disabled>将缺正文文章加入恢复队列</button> <button type="button" data-recovery-check disabled>检查恢复结果</button></p>

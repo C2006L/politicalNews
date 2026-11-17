@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="考研与公考每日时政阅读，按方向筛选新闻、查看原文并收藏。"><title>$section_title · 时政自习室</title><link rel="stylesheet" href="$base/static/study.css?v=5"><script src="$base/static/study.js?v=5" defer></script><script src="$base/static/study_live.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="每日时政精选、政策与解读，保留原文、入选理由及分类纠正。"><title>$section_title · 时政自习室</title><link rel="stylesheet" href="$base/static/study.css?v=6"><script src="$base/static/study.js?v=6" defer></script><script src="$base/static/study_live.js?v=2" defer></script></head>
 <body>
 <a class="skip-link" href="#reading">跳到新闻列表</a>
 $site_header
@@ -13,11 +13,14 @@ $site_header
   <main class="workspace">
     <section class="intro"><div><div class="eyebrow">THE DAILY READING ROOM</div><h1>读时政，知当下。</h1><p>$section_title · $track · $count 组材料</p><p class="reading-date">资料日期 $reading_date</p></div><form class="search" action="$base/search" method="get" role="search"><label class="sr-only" for="study-search">搜索资料库</label><input id="study-search" name="q" placeholder="搜索政策、关键词或日期" required maxlength="120"><button type="submit" aria-label="搜索资料库">⌕</button></form></section>
     <p class="edition-freshness" data-live-message role="status" aria-live="polite">$freshness</p>
-    $learning_desk
+    <section class="curation-overview" aria-label="精选范围"><nav class="curation-modes">$mode_links</nav><p>$selection_note <a href="$base/curation">分类与调整 →</a> · <a href="$base/events">对照同一事件的报道 →</a></p></section>
+    <p class="period-links"><a href="$base/reports?profile=postgrad">考研政治简报 →</a> · <a href="$base/reports?profile=civil">公考简报 →</a> · <a href="$base/reports">其他回顾 →</a></p>
     <section class="filters" aria-label="新闻筛选"><div class="filter-line"><span class="filter-label">阅读方向</span><nav class="options tracks" aria-label="备考方向">$tracks</nav></div><div class="filter-line"><span class="filter-label">新闻主题</span><nav class="options topics" aria-label="主题筛选">$topics</nav></div></section>
     <section id="reading" class="reading-section" tabindex="-1"><div class="list-head"><h2>$scope / $page_count 篇</h2><details class="list-explainer"><summary>排序与来源说明</summary><div><p>$notice</p><p>排序参考标题主题、所选方向与刊载来源，不代表命题预测。</p><p>$guide</p></div></details></div>
       <div class="reading-list">$cards</div><nav class="pagination" aria-label="阅读分页">$pager</nav>
     </section>
+    $learning_desk
+    <details class="auxiliary-tools"><summary>知识点与复习等辅助工具</summary><p><a href="$base/knowledge">知识点目录 →</a> · <a href="$base/practice">我的复习 →</a></p></details>
     <div class="bottom"><span>本页完 · 阅读按自己的节奏</span><a href="#reading">回到列表 ↑</a></div>
   </main>
 </div>

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
 $env:WERSS_DATABASE_PATH = Join-Path $workspaceRoot 'werss-local\local-deploy\data\learning.snapshot.db'

@@ -38,9 +38,9 @@ def test_categories_and_sources_pages(client):
     """测试分类页和数据源页"""
     categories_response = client.get("/categories")
     assert categories_response.status_code == 200
-    assert "专题入口" in categories_response.text
+    assert "专题切换" in categories_response.text
     assert "时政专题" in categories_response.text
-    assert "分类专题页统一承接所有专题分类入口" in categories_response.text
+    assert "切换栏目时保留来源选择" in categories_response.text
 
     sources_response = client.get("/sources")
     assert sources_response.status_code == 200
@@ -134,7 +134,7 @@ def test_today_page_falls_back_to_recent_items_when_empty(monkeypatch, client):
     monkeypatch.setattr(web, "today_news", lambda news_items, limit=None: ([], "今日时政（2026-04-11）"))
     monkeypatch.setattr(web, "get_year_counts", lambda min_year=None: {2026: 1, 2025: 0})
 
-    response = client.get("/")
+    response = client.get("/?mode=all")
     assert response.status_code == 200
     assert "今日暂无更新，已显示最近时政" in response.text
     assert "回退展示的最近时政" in response.text
@@ -175,7 +175,7 @@ def test_news_detail_page(client, monkeypatch):
 
     response = client.get("/news/1")
     assert response.status_code == 200
-    assert "新闻研读" in response.text
+    assert "原文阅读" in response.text
     assert "测试时政标题" in response.text
     assert "人民网" in response.text
 
@@ -365,3 +365,17 @@ def test_api_docs_can_be_hidden_in_production(monkeypatch):
         assert hidden_client.get("/docs").status_code == 404
         assert hidden_client.get("/redoc").status_code == 404
         assert hidden_client.get("/openapi.json").status_code == 404
+
+def test_unselected_feature_is_labeled_and_not_recommended_as_current_affairs(client):
+    from app.database import SessionLocal
+    from tests.test_events import row
+    from bs4 import BeautifulSoup
+    feature=row(1,title='巧手妆成国风诗意',body='客人的眼睛闭着，张娜正在为汉服顾客整理妆容。这是一篇人物消费特写，讲述化妆师与顾客的日常故事。')
+    policy=row(2,title='国务院发布《公共服务保障条例》',body='国务院发布公共服务保障条例，明确相关服务职责，建立完善的实施机制，并向公众公布有关安排与要求。')
+    with SessionLocal() as db:db.add_all([feature,policy]);db.commit()
+    page=BeautifulSoup(client.get('/news/1').text,'html.parser')
+    assert '未入选时政精选' in page.text
+    continued=page.select_one('.side-stack')
+    assert continued.select_one('a[href="/news/2"]')
+    other=BeautifulSoup(client.get('/news/2').text,'html.parser')
+    assert not other.select_one('.side-stack a[href="/news/1"]')

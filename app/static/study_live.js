@@ -64,7 +64,7 @@
     const timeout=setTimeout(()=>activeController.abort(),15000);
     const params=new URLSearchParams();
     const currentQuery=new URLSearchParams(location.search);
-    for(const key of ['page','track','topic','source'])if(currentQuery.has(key))params.set(key,currentQuery.get(key));
+    for(const key of ['page','track','topic','source','mode'])if(currentQuery.has(key))params.set(key,currentQuery.get(key));
     params.set('day',day);
     try {
       const response=await fetch(`${base}/api/study/live?${params}`,{cache:'no-store',signal:activeController.signal});

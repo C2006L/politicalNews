@@ -20,7 +20,8 @@ import feedparser
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal
-from app.models import News
+from app.models import News, AppState
+from app.news_body import extract_body
 from app.search_index import index_news
 
 logger = logging.getLogger(__name__)
@@ -280,6 +281,8 @@ def _is_allowed_source_link(source: str | None, link: str) -> bool:
 
 
 def _is_reliable_item(item: Dict[str, Any]) -> bool:
+    if item.get('body_capture') and item['body_capture'].get('status') != 'extracted':
+        return False
     published_at = item.get("published_at")
     if not published_at:
         return False
@@ -302,7 +305,15 @@ def _fetch_url(url: str) -> str:
         try:
             request = Request(url, headers={"User-Agent": "political-news/1.0"})
             with urlopen(request, timeout=HTTP_TIMEOUT, context=context) as response:
-                return cast(str, response.read().decode("utf-8", errors="ignore"))
+                raw = cast(bytes, response.read())
+                declared = re.search(br'charset\s*=\s*["\x27]?\s*([\w-]+)', raw[:4096], re.I)
+                charset = declared[1].decode('ascii') if declared else 'utf-8'
+                for encoding in dict.fromkeys([charset,'utf-8','gb18030']):
+                    try:
+                        return raw.decode(encoding, errors='strict')
+                    except (UnicodeDecodeError,LookupError):
+                        pass
+                return raw.decode('utf-8', errors='replace')
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             last_error = exc
             # 永久性客户端错误重试也不会恢复；仅保留超时和限流的重试。
@@ -773,49 +784,8 @@ def _parse_article_detail(html_text: str) -> Tuple[str, str, datetime | None]:
     soup = BeautifulSoup(html_text, "html.parser")
     full_text = _normalize_text(soup.get_text(" ", strip=True))
     published_at = _extract_date(full_text)
-    blocks: List[Any] = []
-    selectors = [
-        ".pages_content p",
-        ".rm_txt_con p",
-        ".article-content p",
-        ".content_area p",
-        ".left_zw p",
-        ".news-article p",
-        ".article p",
-        ".content p",
-        ".TRS_Editor p",
-        "main p",
-    ]
+    summary, content, _ = extract_body(html_text)
 
-    for selector in selectors:
-        paragraphs = soup.select(selector)
-        if paragraphs:
-            blocks = paragraphs
-            break
-
-    if not blocks:
-        blocks = soup.find_all("p")
-
-    paragraph_texts: List[str] = []
-    for block in blocks:
-        text = _normalize_text(block.get_text(" ", strip=True))
-        if len(text) < 10:
-            continue
-        if any(token in text for token in ["责任编辑", "扫一扫", "打印", "关闭窗口"]):
-            continue
-        paragraph_texts.append(text)
-
-    # 站内只保留导读与有限节选，避免直接镜像原站全文。
-    content_parts: List[str] = []
-    total_chars = 0
-    for paragraph in paragraph_texts[:8]:
-        total_chars += len(paragraph)
-        if total_chars > 1200:
-            break
-        content_parts.append(paragraph)
-
-    content = "\n".join(content_parts)
-    summary = paragraph_texts[0] if paragraph_texts else ""
     return summary, content, published_at
 
 
@@ -841,6 +811,8 @@ def _fill_item_article(item: Dict[str, Any], article_html: str = "") -> None:
     if detail_date:
         item["published_at"] = detail_date
         item["published"] = detail_date.strftime("%Y-%m-%d")
+    if article_html:
+        _, _, item["body_capture"] = extract_body(article_html)
     item["summary"] = summary or item["title"]
     item["content"] = content or summary or item["title"]
 
@@ -1039,15 +1011,26 @@ def fetch_news(year: int | None = None, months: int = 12, max_pages: int | None 
 
 def save_news_to_db(news_items: List[Dict[str, Any]]) -> int:
     from app.news_knowledge import link_news
+    from app.events import link_event
     db = SessionLocal()
     saved_count = 0
 
     try:
+        db.connection().exec_driver_sql('BEGIN IMMEDIATE')
         for item in news_items:
             existing_news = db.query(News).filter(News.link == item["link"]).first()
             if existing_news:
+                if '_expected_content' in item and existing_news.content != item['_expected_content']:
+                    raise ValueError('Original changed before recovery; refusing overwrite')
+                capture = item.get('body_capture', {})
+                if capture and capture.get('status') != 'extracted':
+                    _save_body_capture(db, existing_news, capture)
+                    continue
+                existing_news.title = item['title']
                 existing_news.summary = item["summary"] or existing_news.summary
                 existing_news.content = item["content"] or existing_news.content
+                if capture:
+                    _save_body_capture(db, existing_news, capture)
                 existing_news.published = item["published"]
                 existing_news.published_at = item["published_at"]
                 existing_news.year = item["published_at"].year
@@ -1056,6 +1039,7 @@ def save_news_to_db(news_items: List[Dict[str, Any]]) -> int:
                 existing_news.category = item["category"]
                 _index_news_safely(db, existing_news.id, item)
                 link_news(db, existing_news)
+                link_event(db, existing_news)
                 continue
 
             news = News(
@@ -1072,8 +1056,11 @@ def save_news_to_db(news_items: List[Dict[str, Any]]) -> int:
             )
             db.add(news)
             db.flush()
+            if item.get("body_capture"):
+                _save_body_capture(db, news, item["body_capture"])
             _index_news_safely(db, news.id, item)
             link_news(db, news)
+            link_event(db, news)
             saved_count += 1
 
         db.commit()
@@ -1088,3 +1075,18 @@ def _index_news_safely(db: Any, news_id: int, item: Dict[str, Any]) -> None:
         index_news(db, news_id, item["title"], item["summary"], item["content"])
     except OperationalError:
         logger.warning("FTS 索引不可用，跳过索引（news_id=%s）", news_id)
+
+
+def _save_body_capture(db: Any, news: News, capture: Dict[str, Any]) -> None:
+    import hashlib
+    record = db.get(AppState, 'news_body:' + str(news.id))
+    data = {**capture, 'stored_characters': len(news.content or ''),
+            'fingerprint': hashlib.sha256((news.content or '').encode()).hexdigest()}
+    if record and capture.get('status') != 'extracted':
+        previous = json.loads(record.value)
+        if previous.get('status') == 'extracted' and previous.get('fingerprint') == data['fingerprint']:
+            data = {**previous, 'last_attempt_status': capture.get('status')}
+    if record is None:
+        db.add(AppState(key='news_body:' + str(news.id), value=json.dumps(data,ensure_ascii=False)))
+    else:
+        record.value = json.dumps(data,ensure_ascii=False)

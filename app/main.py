@@ -19,6 +19,7 @@ from app.sync_service import (
     start_background_sync,
 )
 from app.tasks import setup_scheduler
+from app.routers import curation, events, reports, news_quality, material_sources, material_coverage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     rebuild_links()
     from app.news_knowledge import rebuild_news_links
     rebuild_news_links()
+    from app.events import rebuild_events
+    rebuild_events()
     from app.material_status import recover_import
     recover_import()
     from app.body_recovery import recover_interrupted
@@ -101,6 +104,12 @@ def create_app() -> FastAPI:
     application.include_router(upstream.router)
     application.include_router(body_recovery.router)
     application.include_router(search.router)
+    application.include_router(curation.router)
+    application.include_router(events.router)
+    application.include_router(reports.router)
+    application.include_router(news_quality.router)
+    application.include_router(material_sources.router)
+    application.include_router(material_coverage.router)
     application.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
     return application
 

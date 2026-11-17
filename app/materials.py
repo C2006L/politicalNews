@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models import LearningMaterial, MaterialRevision, AppState
 from app.revisions import append_revision
+from app.material_sources import accounts
 from app.material_status import now_iso, write_status, parse_scan
 
 ACCOUNTS = {"MP_WXS_3243013434": "肖秀荣教授", "MP_WXS_3080503014": "考研政治徐涛"}
@@ -124,7 +125,8 @@ def extract_material(html: str) -> dict[str, Any]:
 
 
 def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
-    """Import only the two selected accounts; never write to WeRSS's database."""
+    """Import only enabled source accounts; never write to WeRSS's database."""
+    active_accounts = accounts()
     configured = get_settings().werss_database_path
     if not configured:
         raise ValueError("请配置 WERSS_DATABASE_PATH")
@@ -132,12 +134,16 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
     result = {"added": 0, "updated": 0, "skipped": 0, "rejected": 0,
               "verification_required": 0, "insufficient_text": 0, "invalid_record": 0,
               "scanned": 0, "remaining": 0}
+    if not active_accounts:
+        return result
+    placeholders = ','.join('?' for _ in active_accounts)
     with SessionLocal() as db:
         checkpoint = db.get(AppState, SCAN_KEY)
         scan = parse_scan(checkpoint.value if checkpoint else None)
         source_key = hashlib.sha256(str(path).encode()).hexdigest()
-        if scan.get('source_key') != source_key:
-            scan = {'source_key': source_key}
+        account_key = hashlib.sha256(json.dumps(active_accounts, sort_keys=True).encode()).hexdigest()
+        if scan.get('source_key') != source_key or scan.get('account_key') != account_key:
+            scan = {'source_key': source_key, 'account_key': account_key}
         after = scan.get('after')
         # Keyset traversal is independent of source timestamps. New/edited rows
         # behind the cursor are revisited next cycle, not permanently excluded.
@@ -146,23 +152,23 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
             def batch(cursor: str | None) -> list[Any]:
                 return source.execute(
                     'SELECT CAST(id AS TEXT),mp_id,title,url,content_html FROM articles '
-                    'WHERE mp_id IN (?,?) AND has_content=1 '
+                    f'WHERE mp_id IN ({placeholders}) AND has_content=1 '
                     'AND (? IS NULL OR CAST(id AS TEXT)>?) '
                     'ORDER BY CAST(id AS TEXT) COLLATE BINARY LIMIT ?',
-                    (*ACCOUNTS, cursor, cursor, BATCH_SIZE + 1)).fetchall()
+                    (*active_accounts, cursor, cursor, BATCH_SIZE + 1)).fetchall()
             peek = (batch(after) if only_source_id is None else source.execute(
                 'SELECT CAST(id AS TEXT),mp_id,title,url,content_html FROM articles '
-                'WHERE mp_id IN (?,?) AND has_content=1 AND CAST(id AS TEXT)=?',
-                (*ACCOUNTS, only_source_id)).fetchall())
+                f'WHERE mp_id IN ({placeholders}) AND has_content=1 AND CAST(id AS TEXT)=?',
+                (*active_accounts, only_source_id)).fetchall())
             if only_source_id is None and after is not None and not peek:
-                scan = {'source_key': source_key}
+                scan = {'source_key': source_key, 'account_key': account_key}
                 peek = batch(None)
             rows = peek[:BATCH_SIZE]
             last = rows[-1][0] if rows else None
             if len(peek) > BATCH_SIZE:
                 result['remaining'] = source.execute(
-                    'SELECT COUNT(*) FROM articles WHERE mp_id IN (?,?) AND has_content=1 AND CAST(id AS TEXT)>?',
-                    (*ACCOUNTS, last)).fetchone()[0]
+                    f'SELECT COUNT(*) FROM articles WHERE mp_id IN ({placeholders}) AND has_content=1 AND CAST(id AS TEXT)>?',
+                    (*active_accounts, last)).fetchone()[0]
         result['scanned'] = len(rows)
         for source_id, account_id, title, url, html in rows:
             if not source_id or not isinstance(title, str) or not isinstance(url, str) or not isinstance(html, str):
@@ -176,6 +182,10 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
                 continue
             fingerprint = hashlib.sha256((EXTRACTOR_VERSION + (html or "") + title + url).encode()).hexdigest()
             material = db.query(LearningMaterial).filter_by(source_id=source_id).first()
+            if material is None:
+                material = db.query(LearningMaterial).filter_by(url=url, account=active_accounts[account_id]).first()
+                if material is not None:
+                    material.source_id = source_id
             if material and material.fingerprint == fingerprint:
                 result["skipped"] += 1
                 continue
@@ -193,7 +203,7 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
                 if not db.query(MaterialRevision.id).filter_by(material_id=material.id).first():
                     append_revision(db, material)
                 result["updated"] += 1
-            material.account = ACCOUNTS[account_id]
+            material.account = active_accounts[account_id]
             material.title, material.url = title, url
             material.fingerprint, material.payload = fingerprint, payload
             material.imported_at = datetime.now(timezone.utc).replace(tzinfo=None)

@@ -116,3 +116,53 @@ class BodyRecovery(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ContentDecision(Base):
+    __tablename__ = 'content_decisions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String, index=True)
+    content_id: Mapped[int] = mapped_column(Integer, index=True)
+    fingerprint: Mapped[str] = mapped_column(String, index=True)
+    category: Mapped[str | None] = mapped_column(String, nullable=True)
+    selection: Mapped[str] = mapped_column(String, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class NewsEvent(Base):
+    __tablename__ = 'news_events'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    event_day: Mapped[str] = mapped_column(String, index=True)
+    facts: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    method: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class PeriodReport(Base):
+    __tablename__ = 'period_reports'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class EventArticle(Base):
+    __tablename__ = 'event_articles'
+    __table_args__ = (UniqueConstraint('event_id', 'news_id', 'fingerprint'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey('news_events.id'), index=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey('news.id'), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    proof: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default='candidate')
+
+
+class EventReview(Base):
+    __tablename__ = 'event_reviews'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey('event_articles.id'), index=True)
+    previous: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

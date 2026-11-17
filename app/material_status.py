@@ -1,5 +1,6 @@
 """Persistent import diagnostics; never expose credentials, paths or exception text."""
 from __future__ import annotations
+from app.material_sources import accounts as get_accounts
 
 import json
 import hashlib
@@ -57,7 +58,7 @@ def recover_import() -> None:
 
 
 def pipeline_status() -> dict[str, Any]:
-    from app.materials import ACCOUNTS, SCAN_KEY, LOCK
+    from app.materials import SCAN_KEY, LOCK
     configured = get_settings().werss_database_path
     acquisition: dict[str, Any] = {
         "state": "unknown", "authorization": "unknown", "last_check_verified": False,
@@ -74,7 +75,7 @@ def pipeline_status() -> dict[str, Any]:
             if get_settings().werss_source_is_snapshot:
                 acquisition['snapshot_age_seconds'] = max(0, int(datetime.now(timezone.utc).timestamp() - path.stat().st_mtime))
             with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
-                for account_id, name in ACCOUNTS.items():
+                for account_id, name in get_accounts().items():
                     row = db.execute(
                         "SELECT COUNT(*),SUM(CASE WHEN has_content=1 AND length(content_html)>0 THEN 1 ELSE 0 END) "
                         "FROM articles WHERE mp_id=?", (account_id,),
@@ -93,7 +94,8 @@ def pipeline_status() -> dict[str, Any]:
         source_key = hashlib.sha256(str(Path(configured).resolve()).encode()).hexdigest() if configured else None
     except (OSError, RuntimeError):
         source_key = None
-    if source_key is None or saved.get('source_key') != source_key:
+    account_key = hashlib.sha256(json.dumps(get_accounts(), sort_keys=True).encode()).hexdigest()
+    if source_key is None or saved.get('source_key') != source_key or saved.get('account_key') != account_key:
         saved = {}
     scan = {key: saved.get(key) for key in ('remaining', 'cycle_scanned', 'cycle_rejected',
             'last_cycle_finished_at', 'last_cycle_scanned', 'last_cycle_rejected')}

@@ -68,3 +68,27 @@ html{scrollbar-gutter:stable}
 .collection-backup p { line-height:1.8; overflow-wrap:anywhere; }
 .collection-backup input { max-width:100%; }
 .collection-backup button { background:none; border:1px solid var(--line); padding:6px 10px; color:var(--ink); font-size:12px; }
+.curation-overview { margin:24px 0; border-top:1px solid var(--line); padding-top:16px; }
+.curation-modes { display:flex; gap:28px; align-items:baseline; }
+.curation-modes a { padding:3px 0 7px; font-size:17px; font-family:SimSun,serif; }
+.curation-modes a[aria-current] { color:var(--red); border-bottom:2px solid var(--red); }
+.curation-overview > p { font-size:12px; line-height:1.8; color:var(--muted); margin:12px 0 0; }
+.curation-overview > p a { color:var(--ink); white-space:nowrap; }
+.curation-reason { font-size:12px; line-height:1.8; color:var(--muted); margin:12px 0; }
+.curation-reason > span { color:var(--red); }
+.classification-evidence { margin-top:10px; font-size:12px; color:var(--muted); }
+.classification-evidence summary { cursor:pointer; }
+.classification-evidence a { border-bottom:1px solid var(--line); color:var(--ink); }
+.classification-evidence p { max-width:720px; overflow-wrap:anywhere; }
+.account-curation { border-top:1px solid var(--ink); margin-top:32px; padding-top:20px; }
+.account-curation h2 { font:22px/1.5 SimSun,serif; margin:0 0 10px; }
+.account-curation p { font-size:13px; line-height:1.8; color:var(--muted); }
+.account-curation ul { list-style:none; margin:0; padding:0; }
+.account-curation li { padding:12px 0; border-bottom:1px solid var(--line); }
+.account-curation li small { display:block; color:var(--muted); font-size:11px; }
+.account-curation li a { font-size:17px; font-family:SimSun,serif; }
+.auxiliary-tools { border-top:1px solid var(--line); padding-top:15px; margin-top:20px; font-size:12px; color:var(--muted); }
+.auxiliary-tools summary { cursor:pointer; }
+@media(max-width:700px) { .curation-modes a { font-size:16px; }.curation-overview > p {font-size:11px;} }
+.event-hint {font-size:12px;line-height:1.8;margin:12px 0;color:var(--ink);}
+.event-hint a {border-bottom:1px solid var(--line);padding-bottom:3px;}

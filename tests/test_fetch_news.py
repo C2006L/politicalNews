@@ -197,7 +197,7 @@ def test_fetch_news_uses_url_date_fallback(mock_load, mock_fetch):
             "content": "",
         }
     ]
-    mock_fetch.return_value = "<html><body><p>这是一段足够长的测试正文内容，用于验证链接日期兜底逻辑能够生效。</p></body></html>"
+    mock_fetch.return_value = "<html><body><div class='rm_txt_con'><p>这是一段足够长的测试正文内容，用于验证链接日期兜底逻辑能够生效。</p></div></body></html>"
 
     items = fetch_news(
         start_date=datetime(2025, 1, 1),

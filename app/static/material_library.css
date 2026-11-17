@@ -1,0 +1,64 @@
+/* The source library is another spread of the daily reading room. */
+.learning-page:has(.materials-desk){max-width:none;margin:0 48px;padding:0}
+.materials-desk{display:grid;grid-template-columns:238px minmax(0,1fr);min-height:calc(100vh - 86px)}
+.materials-rail{padding:34px 28px 40px 0;border-right:1px solid var(--ink);min-width:0}
+.materials-imprint{position:relative;background:var(--ink);color:var(--paper);padding:20px 22px 17px}
+.materials-imprint:before{content:'';position:absolute;top:0;left:0;width:42px;height:4px;background:#d37b52}
+.materials-imprint>span{font-size:10px;letter-spacing:1.6px}
+.materials-imprint>strong{display:block;font:normal 82px/1.2 Georgia,serif;letter-spacing:-4px;margin:12px 0}
+.materials-imprint>div{border-top:1px solid #6b7c70;padding-top:12px;display:flex;justify-content:space-between;font-size:11px}
+.materials-directions{display:flex;flex-direction:column;border-bottom:1px solid var(--line)}
+.materials-directions a{display:grid;grid-template-columns:22px 1fr auto;align-items:baseline;gap:5px;padding:15px 0;border-top:1px solid var(--line)}
+.materials-directions i{font:14px Georgia,serif;color:var(--red);font-style:normal}
+.materials-directions strong{font-size:14px;font-weight:400}
+.materials-directions a>span{font:11px Georgia,serif;color:var(--muted);white-space:nowrap}
+.materials-directions a[aria-current] strong{color:var(--red)}
+.materials-directions a[aria-current] i:before{content:'—';margin-right:3px}
+.materials-directions a[aria-current] i{font-size:0}.materials-directions a[aria-current] i:before{font-size:14px}
+.learning-page .materials-rail-note{font-size:11px;line-height:1.9;color:var(--muted);margin:25px 0 13px}
+.materials-maintenance{display:inline-block;font-size:11px;border-bottom:1px solid var(--line);padding:4px 0;color:var(--muted)}
+.materials-reading{min-width:0;padding:34px 0 45px 38px}
+.materials-heading{display:flex;justify-content:space-between;align-items:end;gap:20px;margin:0 0 30px}
+.materials-heading h1{font:700 48px/1.25 SimSun,serif;letter-spacing:2px;margin:0}
+.materials-heading p{font-size:12px;color:var(--muted);margin:14px 0 0}
+.materials-edition{color:var(--muted);font:12px/1.8 SimSun,serif;letter-spacing:2px;white-space:nowrap;padding-bottom:3px}
+.materials-navigation{border-top:3px solid var(--ink);border-bottom:1px solid var(--ink)}
+.materials-purposes{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;padding:12px 0}
+.materials-filter-label{font-size:10px;color:var(--muted);letter-spacing:1px;margin-right:2px}
+.materials-purposes a{font-size:12px;padding:5px 0;border-bottom:2px solid transparent}
+.materials-purposes a span{font:10px Georgia,serif;color:var(--muted);margin-left:6px}
+.materials-purposes a[aria-current]{color:var(--red);border-color:var(--red)}
+.materials-source{display:flex;flex-wrap:wrap;align-items:center;gap:10px 15px;border-top:1px solid var(--line);padding:12px 0;font-size:11px}
+.materials-source label{font-size:10px;letter-spacing:1px;color:var(--muted)}
+.materials-source select{font:inherit;flex:1;min-width:0;max-width:390px;min-height:36px;border:0;border-bottom:1px solid var(--line);padding:5px 20px 5px 0;background:transparent}
+.materials-source button{font-size:11px;min-height:36px;padding:5px 12px;background:transparent;border:1px solid var(--line)}
+.materials-source>a{margin-left:auto;color:var(--muted);padding:5px 0}
+.materials-source .materials-filter-hint{flex-basis:100%;font-size:10px;color:var(--muted);line-height:1.7}
+.materials-result{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:18px 0 13px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted)}
+.materials-result strong{font-weight:400;color:var(--ink);white-space:nowrap}.materials-result small{font-size:10px;color:var(--muted)}
+.material-record{display:grid;grid-template-columns:36px minmax(0,1fr);gap:15px;border:0;border-bottom:1px solid var(--line);padding:26px 0 28px;scroll-margin-top:20px}
+.material-number{font:23px/1.7 Georgia,serif;color:#8c9587}
+.material-record .meta{font-size:10px;line-height:1.8;letter-spacing:.3px}
+.learning-page .material-record h2{font:600 23px/1.7 SimSun,serif;margin:9px 0 12px;max-width:36em;overflow-wrap:anywhere}
+.material-record h2 a:hover{color:var(--red)}
+.material-record p{font-size:12px;line-height:1.9;margin:0;color:var(--muted)}
+.material-actions{display:flex;align-items:center;flex-wrap:wrap;gap:24px;margin-top:16px;font-size:11px}
+.material-actions a{order:-1;padding:5px 0;border-bottom:1px solid #9ca496}
+.material-actions button{font:inherit;min-height:36px;padding:5px 0;border:0;color:var(--muted);background:transparent}
+.materials-empty{padding:35px 0;border-bottom:1px solid var(--line)}
+.materials-empty h2{font-size:22px}.materials-empty p{font-size:13px;color:var(--muted)}
+.materials-empty a{display:inline-block;font-size:12px;border-bottom:1px solid var(--line);margin:8px 20px 0 0}
+.materials-help{border-top:1px solid var(--line);margin-top:28px;padding-top:16px;color:var(--muted);font-size:12px}.materials-help>summary{cursor:pointer}
+.materials-end{display:flex;justify-content:space-between;gap:15px;font-size:11px;color:var(--muted);padding-top:30px}
+@media(min-width:1500px){.learning-page:has(.materials-desk){max-width:1400px;margin:0 auto}}
+@media(max-width:1000px){.learning-page:has(.materials-desk){margin:0 26px}.materials-desk{grid-template-columns:190px minmax(0,1fr)}.materials-rail{padding-right:22px}.materials-reading{padding-left:26px}.materials-heading h1{font-size:40px}.materials-edition{display:none}.materials-imprint{padding:18px 16px}.materials-imprint>strong{font-size:70px}.materials-imprint>div{font-size:10px}.materials-result{flex-wrap:wrap}}
+@media(max-width:700px){
+ .learning-page:has(.materials-desk){margin:0 20px}.materials-desk{display:block}.materials-rail{padding:18px 0 0;border:0}
+ .materials-imprint{display:flex;align-items:center;gap:14px;padding:12px 15px}.materials-imprint>span{font-size:9px;letter-spacing:1px;max-width:70px}.materials-imprint>strong{font-size:38px;letter-spacing:-1px;margin:0}.materials-imprint>div{margin-left:auto;border:0;padding:0;display:flex;flex-direction:column;gap:1px}
+ .materials-rail .rail-label{font-size:10px;margin:18px 0 8px;letter-spacing:1px}.materials-directions{flex-direction:row;gap:16px;border:0}.materials-directions a{grid-template-columns:auto 1fr;gap:1px 6px;flex:1;min-width:0;padding:9px 0;border-bottom:1px solid var(--line);border-top:0}.materials-directions strong{font-size:12px;white-space:nowrap}.materials-directions i{font-size:11px}.materials-directions a>span{grid-column:2;font-size:10px}.materials-directions a[aria-current]{border-bottom:2px solid var(--red)}
+ .learning-page .materials-rail-note{display:none}.materials-maintenance{font-size:10px;margin-top:9px;padding:2px 0}.materials-reading{padding:24px 0 30px}.materials-heading{margin-bottom:22px}.materials-heading h1{font-size:34px;letter-spacing:1px}.materials-heading p{font-size:11px;margin-top:10px}
+ .materials-purposes{gap:5px 16px;padding:10px 0}.materials-filter-label{flex-basis:100%;font-size:10px}.materials-purposes a{font-size:12px}.materials-source{gap:8px 12px}.materials-source label{flex-basis:100%}.materials-source select{flex-basis:60%;font-size:12px}.materials-source>a{font-size:11px;margin-left:0}
+ .materials-result{display:block;font-size:10px;line-height:1.9;padding:13px 0}.materials-result strong{display:block;margin-top:3px}
+ .material-record{grid-template-columns:22px minmax(0,1fr);gap:10px;padding:23px 0}.material-number{font-size:18px}.material-record .meta{font-size:10px;letter-spacing:0}.learning-page .material-record h2{font-size:21px;line-height:1.7;margin:9px 0 11px}.material-record p{font-size:12px}.material-actions{font-size:12px;gap:22px;margin-top:13px}.material-actions a,.material-actions button{min-height:38px;display:inline-flex;align-items:center}.materials-end{font-size:10px}.materials-empty h2{font-size:20px}
+}
+@media(max-width:360px){.materials-directions{gap:10px}.materials-directions a{gap:2px 4px}.materials-directions i{font-size:10px}.materials-heading h1{font-size:31px}}

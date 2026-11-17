@@ -81,7 +81,7 @@ def test_split_number_and_question_saved_html():
 
 
 def test_learning_views_escape_content_and_handle_empty(client):
-    assert '暂无已整理资料' in client.get('/learning').text
+    assert '这个范围暂未取得正文' in client.get('/learning').text
     assert client.get('/api/learning/999').status_code == 404
     with SessionLocal() as db:
         db.add(LearningMaterial(source_id='x', account='肖秀荣教授', title='<script>alert(1)</script>',

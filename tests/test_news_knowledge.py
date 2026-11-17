@@ -27,7 +27,9 @@ def test_import_automatically_links_and_has_bidirectional_navigation(client):
     reverse = client.get('/api/news/1/knowledge').json()['items']
     assert reverse[0]['id'] == 'productivity-innovation'
     assert '/knowledge/productivity-innovation' in client.get('/news/1').text
-    assert '/knowledge/productivity-innovation' in client.get('/today').text
+    # The homepage now prioritizes news. The existing point link remains on the
+    # article page, while auxiliary tools are collapsed on the homepage.
+    assert '知识点与复习等辅助工具' in client.get('/today').text
     assert '联系新闻阅读' in client.get('/knowledge/productivity-innovation').text
     assert '科技创新推动新质生产力' in client.get(f'/knowledge/news-links/{link["id"]}').text
     assert client.get('/api/news/999/knowledge').status_code == 404

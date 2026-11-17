@@ -1,23 +1,24 @@
 """Describe observed material coverage without claiming a complete source history."""
 from __future__ import annotations
+from app.material_sources import accounts as get_accounts
 
 import re
 from typing import Any, Iterable
 
 from app.database import SessionLocal
-from app.materials import ACCOUNTS
 from app.models import LearningMaterial
 
 
 def summarize(rows: Iterable[LearningMaterial]) -> dict[str, Any]:
     accounts = []
     all_rows = list(rows)
-    for name in ACCOUNTS.values():
+    for name in get_accounts().values():
         selected = [row for row in all_rows if row.account == name]
         numbers: dict[int, list[int]] = {}
         unstructured = audio = images_unknown = 0
         for row in selected:
-            pattern = r'背诵手册\s*D\s*(\d{1,3})(?!\d)' if name == '肖秀荣教授' else r'(?:徐涛|选择题)带背\s*D\s*(\d{1,3})(?!\d)'
+            pattern = (r'背诵手册\s*D\s*(\d{1,3})(?!\d)' if name == '肖秀荣教授' else
+                       r'(?:徐涛|选择题)带背\s*D\s*(\d{1,3})(?!\d)' if name == '考研政治徐涛' else r'(?!)')
             match = re.search(pattern, row.title, flags=re.I)
             if match and 1 <= int(match[1]) <= 366:
                 numbers.setdefault(int(match[1]), []).append(row.id)
@@ -39,4 +40,4 @@ def summarize(rows: Iterable[LearningMaterial]) -> dict[str, Any]:
 
 def coverage_report() -> dict[str, Any]:
     with SessionLocal() as db:
-        return summarize(db.query(LearningMaterial).filter(LearningMaterial.account.in_(list(ACCOUNTS.values()))).all())
+        return summarize(db.query(LearningMaterial).filter(LearningMaterial.account.in_(list(get_accounts().values()))).all())

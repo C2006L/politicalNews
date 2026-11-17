@@ -1,5 +1,6 @@
 """Optional WeRSS target-channel checks. Never persist or return credentials."""
 from __future__ import annotations
+from app.material_sources import accounts as get_accounts
 
 from datetime import datetime, timezone
 import json
@@ -24,7 +25,8 @@ MAX_AGE_SECONDS = 7200
 
 def source_key() -> str:
     settings = get_settings()
-    return hashlib.sha256((settings.werss_api_url + '\n' + settings.werss_api_token_file).encode()).hexdigest()
+    return hashlib.sha256((settings.werss_api_url + '\n' + settings.werss_api_token_file + '\n' +
+                           json.dumps(get_accounts(), sort_keys=True)).encode()).hexdigest()
 
 
 class ProbeFailure(Exception):
@@ -182,14 +184,13 @@ def run_check(_lock_owned: bool = False) -> None:
     if not _lock_owned and not LOCK.acquire(blocking=False):
         return
     try:
-        from app.materials import ACCOUNTS
         save(reset=read_raw().get('source_key') != source_key(),
              state='running', started_at=stamp(), finished_at=None, accounts=[], error=None, source_key=source_key())
         accounts = []
         try:
             if not configured():
                 raise ProbeFailure('not_configured')
-            for account_id, name in ACCOUNTS.items():
+            for account_id, name in get_accounts().items():
                 result = normalize(api_request(account_id), account_id)
                 accounts.append({'id': account_id, 'name': name, **result, 'body_verified': False})
         except ProbeFailure as exc:

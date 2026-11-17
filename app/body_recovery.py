@@ -1,5 +1,6 @@
 """Bounded, persistent recovery of known missing bodies. Upstream DB is read-only."""
 from __future__ import annotations
+from app.material_sources import accounts as get_accounts
 
 from contextlib import closing
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ from sqlalchemy import func
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.materials import ACCOUNTS, import_recovered, ImportBusy
+from app.materials import import_recovered, ImportBusy
 from app.models import BodyRecovery
 from app.upstream import service_request, ProbeFailure
 
@@ -54,15 +55,19 @@ def context_key() -> str:
 
 def source_rows(source_id: str | None = None, missing_only: bool = False) -> list[dict[str, Any]]:
     settings = get_settings()
+    active_accounts = get_accounts()
+    if not active_accounts:
+        return []
+    placeholders = ','.join('?' for _ in active_accounts)
     if not settings.werss_database_path:
         raise RecoveryError('source_unavailable')
     try:
         path = Path(settings.werss_database_path).resolve(strict=True)
         with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=2)) as db:
             rows = db.execute('SELECT CAST(id AS TEXT),mp_id,title,url,content_html,has_content FROM articles '
-                              'WHERE mp_id IN (?,?) AND (? IS NULL OR CAST(id AS TEXT)=?) '
+                              f'WHERE mp_id IN ({placeholders}) AND (? IS NULL OR CAST(id AS TEXT)=?) '
                               "AND (?=0 OR COALESCE(has_content,0)!=1 OR content_html IS NULL OR trim(content_html)='')",
-                              (*ACCOUNTS, source_id, source_id, int(missing_only))).fetchall()
+                              (*active_accounts, source_id, source_id, int(missing_only))).fetchall()
     except (OSError, sqlite3.Error, ValueError, RuntimeError):
         raise RecoveryError('source_unavailable') from None
     return [dict(source_id=row[0], account_id=row[1], title=row[2], url=row[3], html=row[4], has_content=row[5]) for row in rows]
@@ -75,7 +80,7 @@ def eligible(row: dict[str, Any]) -> bool:
     except ValueError:
         return False
     return bool(isinstance(identity, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.~-]{0,249}', identity)
-                and row['account_id'] in ACCOUNTS and isinstance(row['title'], str)
+                and row['account_id'] in get_accounts() and isinstance(row['title'], str)
                 and parsed and parsed.scheme == 'https' and parsed.netloc == 'mp.weixin.qq.com')
 
 
@@ -283,7 +288,7 @@ def status(page: int = 1) -> dict[str, Any]:
         total = query.count()
         active = query.filter(BodyRecovery.state.in_(ACTIVE)).count()
         rows = query.order_by(BodyRecovery.created_at.desc()).offset((page - 1) * 20).limit(20).all()
-        items = [{'id': row.id, 'title': row.title, 'account': ACCOUNTS.get(row.account_id, '未知来源'),
+        items = [{'id': row.id, 'title': row.title, 'account': get_accounts().get(row.account_id, '未知来源'),
                   'state': row.state, 'error': row.error, 'created_at': row.created_at.isoformat() + 'Z',
                   'updated_at': row.updated_at.isoformat() + 'Z', 'retry_after_seconds': retry_after(row),
                   'can_retry': row.state in ('failed', 'invalid_content', 'unknown') and not retry_after(row)} for row in rows]
