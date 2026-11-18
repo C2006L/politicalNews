@@ -117,7 +117,9 @@ def normalize(payload: dict[str, Any], account_id: str) -> dict[str, Any]:
                     'authorization': 'not_rejected_at_check' if count else 'unknown',
                     'latest_title': title[:300], 'article_count': count}
     code = data.get('code') if isinstance(data, dict) else None
-    if str(code) in {'-2012', '-2013', '401', 'missing_cookie'}:
+    if str(code) == '-2012':
+        return {'state': 'authorization_or_limit', 'authorization': 'unknown'}
+    if str(code) in {'-2013', '401', 'missing_cookie'}:
         return {'state': 'login_required', 'authorization': 'rejected'}
     if str(code) in {'-2010', '-2014', '403', '429', '499', '-2041'}:
         return {'state': 'restricted_or_unsupported', 'authorization': 'unknown'}

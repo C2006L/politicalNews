@@ -5,6 +5,9 @@ from fastapi.responses import HTMLResponse
 from app.material_coverage import coverage
 from app.config import get_settings
 from app.routers.learning import layout
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from app.history_worker import status as worker_status
 
 router=APIRouter(tags=['公众号覆盖'])
 
@@ -19,6 +22,12 @@ def coverage_page() -> HTMLResponse:
     data=coverage();base=escape(get_settings().base_path,quote=True)
     body=f'<div class="eyebrow">COLLECTION LEDGER</div><h1>公众号收录覆盖</h1><p>近90天时政优先：{data["window"]["start"]} — {data["window"]["end"]}。本站保存 {data["total"]} 条文章记录，原页质量与去重后的链接清单另计，学习材料另列。</p><p class="report-scope">{escape(data["scope"])}</p><p><a href="{base}/learning">返回资料目录 →</a></p>'
     body+=f'<p><a href="{base}/material-quality">检查公众号正文质量 →</a> · <a href="{base}/news-quality">检查网站正文质量 →</a></p>'
+    worker=worker_status()
+    if worker['enabled']:
+        worker_labels={'running':'正在处理一个来源', 'awaiting_confirmation':'上次任务结果待确认，已暂停新任务',
+                       'docker_unavailable':'未找到本机 Docker 命令，等待运行环境恢复',
+                       'observed_complete':'上次任务已结束，按来源退避状态等待下轮'}
+        body+=f'<p>本机自动续采已启用：{worker_labels.get(str(worker.get("state") or ""), "每5分钟检查待补来源")}。验证码需人工确认；接口受限会退避，不循环请求。</p>'
     from app.database import SessionLocal
     from app.models import AppState
     import json
@@ -45,13 +54,20 @@ def coverage_page() -> HTMLResponse:
             collector_states={'authorization_required':'历史列表授权待恢复','authorization_or_limit':'历史通道受限，授权或配额原因待核实','access_restricted':'历史列表访问受限',
                               'history_partial':'历史列表补采进行中','window_scanned':'已扫描接口返回的本期列表',
                               'incremental_checked':'已检查最新列表','history_error':'历史补采未完成',
-                              'cursor_reset':'分页顺序有变化，已回到起点复核','list_ready':'历史列表可访问，范围与正文另计'}
+                              'cursor_reset':'分页顺序有变化，已回到起点复核','list_ready':'历史列表可访问，范围与正文另计',
+                              'verification_required':'微信要求验证，该号已暂停'}
             label=collector_states.get(collector['status'],'等待历史列表验证')
             body+=f'<p>WeRSS主通道：{label} · 已发现 {collector["discovered"]} 条列表文章 · 正文待补 {collector["pending_bodies"]} 篇</p>'
+            def local_time(value: Any) -> str:
+                return datetime.fromtimestamp(value,ZoneInfo('Asia/Shanghai')).strftime('%m月%d日 %H:%M') if value else '尚无可核查记录'
+            body+=f'<p>最近列表成功：{local_time(collector.get("last_list_success_at"))} · 最近正文入库：{local_time(collector.get("last_body_success_at"))}</p>'
+            if collector.get('running'):
+                body+='<p>该号有采集任务运行中，保留已确认的成功时间，等待本批结束。</p>'
             if collector.get('latest_fallback'):
                 body+='<p>本批仅最新稿兜底可用，历史列表未完成；最新文章抓取成功不代表近90天补齐。</p>'
             if collector.get('retry_after'):
-                body+='<p>采集已退避暂停并保存断点；不会仅凭同一个错误码要求反复扫码。</p>'
+                if collector['retry_after'] > datetime.now().timestamp():
+                    body+=f'<p>已保存断点，最早重试：{local_time(collector["retry_after"])}；不会仅凭同一个错误码要求反复扫码。</p>'
             if collector.get('complete'):
                 body+='<p>这里只核对接口实际返回的列表范围，仍不等于已确认全号90天发布总量。</p>'
         history=row.get('history',{})

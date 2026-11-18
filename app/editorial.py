@@ -14,7 +14,7 @@ from app.models import News, LearningMaterial, ContentDecision
 
 CATEGORIES = {'policy': '政策发布', 'report': '时政报道', 'analysis': '时政解读',
               'textbook': '教材背诵', 'exam_advice': '备考建议', 'promotion': '推广内容', 'uncertain': '待判断'}
-METHOD = 'editorial-rules-1'
+METHOD = 'editorial-rules-2'
 
 
 @dataclass
@@ -62,7 +62,7 @@ def classify(title: str, text: str, source: str = '', url: str = '') -> Selectio
     # Strong teaching markers take precedence over a catchy current-affairs title.
     current_affairs_digest = bool(re.search(r'时政.{0,6}(?:总结|梳理|汇总|盘点)|(?:每月|每周|\d+月)时政', title))
     if (hit(r'背诵手册|带背\s*D?\d+|早鸟带背|考点(?:串讲|背诵)|教材(?:精讲|解读|背诵)', title, 'title') or
-            not current_affairs_digest and hit(r'背诵知识点|点击(?:空白处|空格横线)查看答案|重温重要提法', body, 'text')):
+            not current_affairs_digest and hit(r'背诵知识点|点击(?:空白处|空格横线)查看答案|点击下方空白处获得答案|重温重要提法', body, 'text')):
         return Selection('textbook', False, ['包含明确的背诵或教材问答结构，保留在资料库'], evidence)
     journalistic = bool(re.search(r'调查|曝光|整治|查处|警惕.{0,15}诈骗', title))
     if not journalistic and hit(r'优惠码|限时抢购|课程(?:开售|优惠)|扫码(?:购买|领课)|免费领.*(?:真题|资料)|购课|直播带货', title, 'title'):
@@ -85,10 +85,19 @@ def classify(title: str, text: str, source: str = '', url: str = '') -> Selectio
     score = 0
     official = source in {'gov_cn', 'mfa'}
     public_context = bool(re.search(r'APEC|亚太|政策|外交|国务院|改革|经济|两岸|联合国', title + ' ' + body[:500], re.I))
+    lead = body[:650]
+    # A publisher's name alone is never enough; require an explicit commentary
+    # byline, a public issue, and an analytical judgement in the opening text.
+    body_analysis = (bool(re.search(r'半月谈评论员|人民日报评论员|人民锐评|人民时评|新华社政论', lead)) and
+                     bool(re.search(r'治理|法规|从严治党|政策|民生|乡村|教育|法治|改革|公共服务|亚太|APEC', lead)) and
+                     hit(r'应当|必须|需要|不能|破除|关键|背道而驰|治理|坚持|推动', lead, 'text'))
     analysis = (hit(r'评论员|人民锐评|人民时评|半月谈评论|解读|述评|时政观察|时政.*(?:总结|梳理)|新闻分析|政策解读', title, 'title') or
+                body_analysis or
                 source in {'banyuetan_web','people_opinion_web'} and bool(re.search(r'政策|治理|民生|政绩|纪律|改革|乡村|经济|发展|干部',title)) or
                 public_context and hit(r'【[^】]{0,10}观察】|东西问|瞩望', title, 'title'))
     policy = hit(r'(?:发布|印发|出台|实施|施行|审议通过|公布).{0,35}(?:政策|条例|办法|方案|意见|规定|法律|规划)|(?:条例|办法|规定).{0,12}(?:施行|实施)|补贴.{0,18}(?:品类|范围).{0,8}(?:扩容|新增|调整)', title, 'title')
+    if not policy and not re.search(r'模拟|假设|如果|尚未|并未|建议.{0,20}(?:印发|发布)', lead[:180]):
+        policy = hit(r'(?:国务院|中共中央|全国人大常委会|教育部|财政部|国家发展改革委).{0,35}(?:印发|发布|审议通过).{0,40}《[^》]{2,70}(?:条例|办法|方案|意见|规划|规定)》', lead, 'text')
     if analysis:
         category = 'analysis'
         score += 2
@@ -96,13 +105,15 @@ def classify(title: str, text: str, source: str = '', url: str = '') -> Selectio
     elif policy:
         category = 'policy'
         score += 5
-        reasons.append('标题包含政策发布或实施的明确动作，可查看原文举措')
+        reasons.append('标题或正文开头包含发布主体、政策文件与明确动作，可查看原文举措')
     elif (hit(r'会晤|会见|出席|峰会|会议|发布|公布|启动|审议|同比|增长|投产|建成|签署|讲话|指示|全会|发射|调查|曝光|整治|查处|护航|开市.*周年|总市值|发表.{0,30}重要文章', title, 'title') or
+          not re.search(r'模拟|假设|如果', lead[:180]) and
+          hit(r'习近平.{0,80}(?:作出重要指示|考察时强调|重要讲话|出席)', lead, 'text') or
           source in {'gov_cn', 'people_cn', 'xinhuanet', 'cctv', 'mfa', 'chinanews', 'qstheory', 'gmw', 'ce', 'dangyuan'} and
-          hit(r'习近平.{0,30}(?:指示|讲话|强调|出席)|国务院.{0,30}(?:印发|发布|会议)|新华社.{0,80}(?:出席|会议|签署|公布|发布)|(?:论坛|会议).{0,20}(?:召开|举行)', body[:600], 'text')):
+          hit(r'国务院.{0,30}(?:印发|发布|会议)|新华社.{0,80}(?:出席|会议|签署|公布|发布)|(?:论坛|会议).{0,20}(?:召开|举行)', lead, 'text')):
         category = 'report'
         score += 3
-        reasons.append('标题包含公共事件、政策行动或公开进展')
+        reasons.append('标题或正文开头包含公共事件、政策行动或公开进展')
     else:
         return Selection('uncertain', False, ['未识别到足够明确的时政信息，仍可查看全部原文'], evidence)
     if official:

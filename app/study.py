@@ -61,6 +61,7 @@ def prepare_readings(items: Sequence[News], track: str = "all", topic: str = "al
     groups: dict[tuple[str, str, str, bool], list[News]] = {}
     selections = {}
     labels = {}
+    relevance = {}
     for item in items:
         if mode=='featured' and captures is not None and (item.id in captures or os.getenv('STRICT_TEXT_QUALITY')=='1'):
             from app.news_quality import capture_status
@@ -69,6 +70,14 @@ def prepare_readings(items: Sequence[News], track: str = "all", topic: str = "al
         selections[item.id] = decision
         if mode == 'featured' and not decision.selected:
             continue
+        if mode == 'featured' and track in {'postgrad','civil','essay'}:
+            from app.exam_profiles import assess
+            from app.news_quality import capture_status
+            match = assess(item, 'civil' if track=='essay' else track, overrides,
+                           capture_status(item,captures) if captures is not None else None)
+            if not match['eligible']:
+                continue
+            relevance[item.id] = match
         label = next((key for key, (_, words) in TOPICS.items() if any(word in item.title+' '+item.category for word in words)), 'other')
         labels[item.id] = label
         if topic!='all' and label!=topic:continue
@@ -85,6 +94,9 @@ def prepare_readings(items: Sequence[News], track: str = "all", topic: str = "al
         decision = selections[item.id]
         score = max(selections[a.id].score + (3 if labels[a.id] in PREFERENCES[track] else 0) for a in articles)
         reasons = list(decision.reasons)
+        if item.id in relevance:
+            score = max(relevance[a.id]['score'] + (10 if selections[a.id].manual else 0) for a in articles)
+            reasons.insert(0,relevance[item.id]['reason'])
         if label in PREFERENCES[track]:
             reasons.append("主题与所选备考方向相关")
         event_id=(confirmed_events or {}).get(item.id)

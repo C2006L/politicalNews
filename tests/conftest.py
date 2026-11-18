@@ -56,6 +56,7 @@ def isolated_runtime(monkeypatch):
     monkeypatch.setenv('WERSS_API_URL', '')
     monkeypatch.setenv('WERSS_API_TOKEN_FILE', '')
     monkeypatch.setenv('WERSS_RECOVERY_TOKEN_FILE', '')
+    monkeypatch.setenv('LOCAL_WERSS_HISTORY_WORKER_ENABLED', '0')
     monkeypatch.setenv("EXPOSE_API_DOCS", "1")
     import app.sync_service as sync
     def no_worker(*args, **kwargs):

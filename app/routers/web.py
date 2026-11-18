@@ -748,7 +748,7 @@ def study_snapshot(page: int, source: Optional[str], track: str, topic: str, day
     items = [item for item in filtered if item.published_at.date() == now.date()]
     with SessionLocal() as db:
         overrides = decision_map(db)
-        notes = render_material_notes(db, BASE_PATH, overrides)
+        notes = render_material_notes(db, BASE_PATH, overrides, track)
         confirmed_events = confirmed_event_map(db)
         event_hints = event_hint_map(db)
         from app.news_quality import capture_records

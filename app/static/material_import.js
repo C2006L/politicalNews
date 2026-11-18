@@ -9,7 +9,7 @@
   let checking = false;
   const probeStates = {not_configured:'尚未连接 WeRSS 主动检查接口',not_checked:'尚未主动检查',running:'正在检查两个公众号的最新文章入口',checked:'已完成上次通道检查',failed:'上次主动检查失败',interrupted:'上次主动检查中断，可以重试'};
   const probeErrors = {invalid_configuration:'本地接口地址配置不兼容',service_credential_missing:'WeRSS 接口凭据文件不可用',service_auth_required:'WeRSS 管理接口授权需要更新，这不等于微信读书登录失效',incompatible_service:'当前 WeRSS 版本不支持检查接口',incompatible_response:'检查响应无法识别',service_unavailable:'WeRSS 接口暂不可达，请检查本机服务',service_error:'WeRSS 服务未完成检查',check_failed:'检查未完成，请稍后重试'};
-  const accountStates = {accessible:'检查时最新文章入口可访问（未检查正文）',empty_response:'未取得最新文章信息',login_required:'明确返回登录错误，请到 WeRSS 重新扫码后再检查',restricted_or_unsupported:'访问受限或接口不兼容，不能仅据此判断登录过期',network_error:'访问微信读书失败，登录状态未知',incompatible_response:'上游响应无法识别，状态未知'};
+  const accountStates = {accessible:'检查时最新文章入口可访问（未检查正文）',empty_response:'未取得最新文章信息',login_required:'明确返回登录错误，请到 WeRSS 重新扫码后再检查',authorization_or_limit:'历史通道受限，授权或配额原因待核实；先退避，不要求反复扫码',restricted_or_unsupported:'访问受限或接口不兼容，不能仅据此判断登录过期',network_error:'访问微信读书失败，登录状态未知',incompatible_response:'上游响应无法识别，状态未知'};
   async function refresh() {
     try {
       const response = await fetch(base + '/api/learning/status', {cache:'no-store'});

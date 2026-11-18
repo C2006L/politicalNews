@@ -8,6 +8,9 @@ def setup_scheduler() -> BackgroundScheduler:
     import os
     settings = get_settings()
     scheduler = BackgroundScheduler(timezone=settings.scheduled_sync_timezone)
+    if os.getenv('LOCAL_WERSS_HISTORY_WORKER_ENABLED') == '1' and settings.werss_database_path:
+        scheduler.add_job('app.history_worker:run', 'interval', minutes=5,
+                          id='local_werss_history', max_instances=1, coalesce=True)
     if os.getenv('OFFICIAL_WEBSITES_ENABLED')=='1':
         scheduler.add_job('app.official_sources:collect','interval',hours=2,id='official_website_supplement',max_instances=1,coalesce=True)
     if os.getenv('LEGACY_BODY_RECOVERY_ENABLED')=='1':

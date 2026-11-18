@@ -107,7 +107,47 @@ def test_expired_history_authorization_is_not_hidden_by_successful_latest_fallba
     state = read_state(adapter)
     assert state['status'] == 'authorization_or_limit' and state['latest_fallback']
     assert not state['complete'] and state['latest_saved'] == 1
+    assert not state.get('last_list_success_at')
+    assert state['last_body_success_at'] and not state.get('last_batch_success_at')
+    assert state['run_finished_at'] >= state['run_started_at']
     client.update_mps.assert_not_called()
+
+
+def test_success_times_survive_later_channel_failure_and_resume(adapter):
+    client,calls,saved,callback=client_for(adapter,[group('A'),group('B'),group('C')])
+    collect(client,callback)
+    before=read_state(adapter)
+    assert before['last_list_success_at'] and before['last_body_success_at']
+    assert before['last_batch_success_at'] and before['offset']==2
+    original=client._get_mp_articles_page
+    client._get_mp_articles_page=Mock(side_effect=adapter.WereadMPAPIError(-2012,'restricted'))
+    client._get_mp_cover=Mock(side_effect=adapter.WereadMPAPIError(-2012,'restricted'))
+    with pytest.raises(adapter.WereadMPAPIError):collect(client,callback)
+    failed=read_state(adapter)
+    for key in ('last_list_success_at','last_body_success_at','last_batch_success_at'):
+        assert failed[key]==before[key]
+    with adapter.HistoryStore().claim('MP_WXS_1') as (state,lease):
+        state['retry_after']=0
+        adapter.HistoryStore().save('MP_WXS_1',state,lease)
+    client._get_mp_articles_page=original
+    collect(client,callback)
+    assert calls[-2:]==[0,1]
+    assert len({x['id'] for x in saved})==len(saved)==3
+
+
+def test_verification_remains_paused_until_explicit_source_confirmation(adapter,monkeypatch):
+    client,_,_,callback=client_for(adapter,[group('A')])
+    original=client._get_mp_content
+    client._get_mp_content=Mock(side_effect=adapter.WereadMPAPIError('verification_required','verify',False))
+    with pytest.raises(adapter.WereadMPAPIError):collect(client,callback)
+    assert read_state(adapter)['status']=='verification_required'
+    client._get_mp_content=original
+    client._get_mp_articles_page=Mock(return_value={'reviews':[group('A')]})
+    with pytest.raises(adapter.WereadMPAPIError):collect(client,callback)
+    client._get_mp_articles_page.assert_not_called()
+    monkeypatch.setenv('POLITICAL_HISTORY_VERIFICATION_CONFIRMED','MP_WXS_1')
+    collect(client,callback)
+    assert read_state(adapter)['last_body_success_at']
 
 
 def test_cover_fallback_does_not_fabricate_publication_time(adapter):

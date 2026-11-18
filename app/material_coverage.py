@@ -78,8 +78,9 @@ def coverage() -> dict[str, Any]:
             entries[-1].update(blocked=history['blocked'], state='verification_required' if history['blocked'] else 'partial',
                                history_access=history['history_entry']['state'])
     end=datetime.now(ZoneInfo('Asia/Shanghai')).date()
-    latest=max((r['history'].get('updated_at') or 0 for r in entries),default=0)
+    latest=max((max(r['history'].get('updated_at') or 0,(r.get('collector') or {}).get('checked_at') or 0) for r in entries),default=0)
     at=datetime.fromtimestamp(latest,ZoneInfo('Asia/Shanghai')).isoformat() if latest else report.get('at')
-    return {'total':sum(counts.values()),'at':at,'items':entries,
+    from app.history_worker import status as worker_status
+    return {'total':sum(counts.values()),'at':at,'items':entries,'automatic_history':worker_status(),
             'window':{'start':(end-timedelta(days=89)).isoformat(),'end':end.isoformat(),'days':90,'account_coverage_rate':None},
-            'scope':'只统计已知公开目录，不代表全号历史。未知总量不填0；近90天覆盖率尚待核实刊载时间。'}
+            'scope':'统计接口返回的列表与已知公开目录，不代表全号历史。未知总量不填0；近90天覆盖率尚待核实刊载时间与完整目录。'}

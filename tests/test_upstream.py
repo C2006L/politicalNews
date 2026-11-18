@@ -44,7 +44,7 @@ def test_success_is_scoped_fresh_and_sanitized(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('code,state,authorization', [
-    (-2012,'login_required','rejected'), (-2013,'login_required','rejected'),
+    (-2012,'authorization_or_limit','unknown'), (-2013,'login_required','rejected'),
     (-2041,'restricted_or_unsupported','unknown'), (-2010,'restricted_or_unsupported','unknown'),
     ('network_error','network_error','unknown'), ('timeout','network_error','unknown'),
 ])

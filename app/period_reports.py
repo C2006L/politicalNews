@@ -63,7 +63,7 @@ def build_report(db: Session, kind: str, day: date, profile: str='general') -> d
         digest = build_digest(group['sources'])
         items.append({**group,'points':digest['points'][:3], 'comparison':digest['articles'],
                       'point_count':digest['total_points']})
-    payload={'method':'period-extractive-3','kind':kind,'profile':profile,'profile_label':PROFILES[profile],
+    payload={'method':'period-extractive-4','kind':kind,'profile':profile,'profile_label':PROFILES[profile],
              'profile_excluded':len(rows)-sum(a['eligible'] for a in assessments.values()) if assessments else 0,
              'start':start.isoformat(),'end':end.isoformat(),
              'through':through.isoformat(),'period_complete':end<today,'collected':len(rows),

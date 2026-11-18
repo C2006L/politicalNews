@@ -23,7 +23,7 @@ from core.wx.model.weread import MpsWeread
 
 
 WEREAD_WEB_BASE = "https://weread.qq.com"
-ADAPTER_VERSION = 'history-90-v1'
+ADAPTER_VERSION = 'history-90-v2'
 
 
 class HistoryStore:
@@ -389,6 +389,8 @@ class MpsWereadMP(MpsWeread):
         if gather:
             item['content'] = self._get_mp_content(review_id)
         self._publish_item(item, mp_id, title, callback, item_callback)
+        if callback is not None and gather and not self._is_article_gathered(mp_id, review_id):
+            raise WereadMPAPIError('write_unconfirmed', 'Latest article persistence was not confirmed')
         return 1
 
     def _collect_history(self, book_id, mp_id, title, gather, pages, state, store, lease, callback, item_callback):
@@ -415,6 +417,8 @@ class MpsWereadMP(MpsWeread):
             payload = self._get_mp_articles_page(book_id, offset)
             articles, groups = parse_mp_articles(payload)
             self.response_valid = True
+            state['last_list_success_at'] = int(time.time())
+            store.save(mp_id, state, lease)
             if resuming and state.get('anchor') and not any(item['id'] in state['anchor'] for item in articles):
                 # A deletion/reorder or a large insertion moved the page; do
                 # not claim contiguous coverage across a missing anchor.
@@ -466,6 +470,8 @@ class MpsWereadMP(MpsWeread):
                 if review_id in state['body_pending']:
                     state['body_pending'].remove(review_id)
                 state['saved_this_batch'] += 1
+                if gather:
+                    state['last_body_success_at'] = int(time.time())
                 store.save(mp_id, state, lease)
                 if self._get_content_interval():
                     time.sleep(self._get_content_interval())
@@ -516,21 +522,31 @@ class MpsWereadMP(MpsWeread):
         store = HistoryStore()
         try:
             with store.claim(mp_id) as (state, lease):
-                state.update(adapter_version=ADAPTER_VERSION, saved_this_batch=0, known_this_batch=0,
-                             latest_fallback=False, latest_saved=0)
                 auth_path=Path(os.getenv('WEREAD_LIC_PATH','./data/wx.lic'))
                 auth_epoch=auth_path.stat().st_mtime_ns if auth_path.exists() else 0
+                if state.get('status') == 'verification_required':
+                    if os.getenv('POLITICAL_HISTORY_VERIFICATION_CONFIRMED') != mp_id:
+                        raise WereadMPAPIError('verification_required', 'Manual verification must be confirmed before resuming', False)
+                    state.update(status='verification_confirmed', retry_after=0)
                 if state.get('retry_after',0)>time.time() and state.get('auth_epoch')==auth_epoch:
                     raise WereadMPAPIError(state.get('list_code','channel_cooldown'),'Channel cooldown; progress preserved',False)
+                state.update(adapter_version=ADAPTER_VERSION, saved_this_batch=0, known_this_batch=0,
+                             latest_fallback=False, latest_saved=0,
+                             run_id=os.getenv('POLITICAL_HISTORY_RUN_ID') or uuid.uuid4().hex,
+                             run_started_at=time.time(), run_finished_at=None)
+                store.save(mp_id, state, lease)
                 try:
                     latest = self._collect_history(book_id, mp_id, Mps_title, gather, pages, state, store, lease, CallBack, Item_Over_CallBack)
-                    state.update(list_code=0,retry_after=0)
+                    state.update(list_code=0,retry_after=0,last_batch_success_at=int(time.time()))
+                    if state.get('complete'):
+                        state['last_window_scan_at'] = int(time.time())
                     store.save(mp_id, state, lease)
                     self.update_mps(mp_id, Feed(sync_time=int(time.time()), update_time=latest or None))
                 except WereadMPAPIError as error:
                     state.update(list_code=error.code, status='authorization_or_limit' if error.code == -2012 else
                                  'authorization_required' if error.code == -2010 else
-                                 'access_restricted' if error.code in (-2041,499) else 'history_error')
+                                 'access_restricted' if error.code in (-2041,499) else
+                                 'verification_required' if error.code == 'verification_required' else 'history_error')
                     if error.code in (-2012,-2010,-2041,499):
                         state.update(retry_after=time.time()+1800,auth_epoch=auth_epoch)
                     if not self.response_valid:
@@ -542,8 +558,21 @@ class MpsWereadMP(MpsWeread):
                         except Exception as fallback_error:
                             state['latest_fallback'] = False
                             state['latest_error'] = getattr(fallback_error, 'code', type(fallback_error).__name__)
+                            if getattr(fallback_error, 'code', None) == 'verification_required':
+                                state.update(status='verification_required')
+                        if state.get('latest_saved') and gather:
+                            state['last_body_success_at'] = int(time.time())
+                    if (state.get('retry_after') or 0) <= time.time() and state['status'] != 'verification_required':
+                        state['retry_after'] = time.time() + 900
                     store.save(mp_id, state, lease)
                     raise
+                except Exception:
+                    state.update(status='history_error', list_code='unexpected_error', retry_after=time.time()+900,
+                                 auth_epoch=auth_epoch)
+                    raise
+                finally:
+                    state['run_finished_at'] = time.time()
+                    store.save(mp_id, state, lease)
         except Exception as error:
             self.last_error = {'code': getattr(error, 'code', type(error).__name__),
                                'message': '公众号历史补采未完成，请检查授权、访问限制或正文状态',

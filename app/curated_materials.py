@@ -8,7 +8,7 @@ from app.models import LearningMaterial
 from app.material_quality import latest_quality
 
 
-def render_material_notes(db: Session, base: str, overrides: dict) -> str:
+def render_material_notes(db: Session, base: str, overrides: dict, track: str = 'all') -> str:
     safe = escape(base, quote=True)
     rows = db.query(LearningMaterial).order_by(LearningMaterial.imported_at.desc(), LearningMaterial.id.desc()).all()
     selected = []
@@ -17,6 +17,11 @@ def render_material_notes(db: Session, base: str, overrides: dict) -> str:
         result = select_document(row, overrides)
         counts[result.category] += 1
         if result.selected and latest_quality(db,row)['featured_eligible']:
+            if track in {'postgrad','civil','essay'}:
+                from app.exam_profiles import assess
+                relevance=assess(row,'civil' if track=='essay' else track,overrides)
+                if not relevance['eligible']:
+                    continue
             selected.append((row, result))
     body = '<section class="account-curation"><h2>公众号里的时政补充</h2>'
     if selected:
