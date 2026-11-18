@@ -85,6 +85,62 @@ def test_verification_pauses_only_source_and_requires_explicit_resume():
     assert not good['blocked'] and good['body_available'] == 1
 
 
+def test_official_release_is_requested_before_old_unclassified_link_without_changing_checks():
+    source=configured('xiao')
+    with leased(source) as (state,token):
+        add_item(state,{'url':url('1'),'title':'每日打卡练习'},'test',biz_for(source))
+        add_item(state,{'url':url('2'),'title':'权威发布：国务院印发乡村振兴实施方案'},'test',biz_for(source))
+        save('xiao',state,token)
+    calls=[]
+    def fetch(address):
+        calls.append(address)
+        return page('2',title='权威发布：国务院印发乡村振兴实施方案')
+    result=run_batch('xiao',fetch,max_articles=1,max_pages=0,pause=0)
+    assert calls==[url('2')] and result['batch']['imported']==1
+    assert read_state('xiao')['items'][biz_for(source)+':1:1']['status']=='pending'
+
+
+def test_official_release_priority_does_not_override_verification_pause():
+    source=configured('xiao')
+    with leased(source) as (state,token):
+        add_item(state,{'url':url('1'),'title':'权威发布：国务院公布新办法'},'test',biz_for(source))
+        save('xiao',state,token)
+    result=run_batch('xiao',lambda _: '<p>环境异常，去验证</p>',max_pages=0,pause=0)
+    assert result['blocked'] and result['batch']['imported']==0
+    assert run_batch('xiao',lambda _: pytest.fail('Must not retry challenge'),pause=0)['blocked']
+
+
+def test_official_body_is_fetched_before_a_pending_old_album():
+    source=configured('xiao')
+    with leased(source) as (state,token):
+        discover(state,'<div album_id="1234567890"></div>','test',biz_for(source))
+        add_item(state,{'url':url('1'),'title':'权威发布：国务院印发实施方案'},'test',biz_for(source))
+        save('xiao',state,token)
+    calls=[]
+    def fetch(address):
+        calls.append(address)
+        if address==url('1'):return page('1')
+        return json.dumps({'base_resp':{'ret':0},'getalbum_resp':{'article_count':0,'continue_flag':0,'article_list':[]}})
+    result=run_batch('xiao',fetch,max_articles=1,max_pages=1,pause=0)
+    assert calls[0]==url('1') and result['batch']['imported']==1
+    assert result['batch']['article_requests']==result['batch']['directory_requests']==1
+
+
+def test_priority_does_not_exceed_zero_article_request_budget():
+    source=configured('xiao')
+    with leased(source) as (state,token):
+        discover(state,'<div album_id="1234567890"></div>','test',biz_for(source))
+        add_item(state,{'url':url('1'),'title':'权威发布：国务院印发实施方案'},'test',biz_for(source))
+        save('xiao',state,token)
+    calls=[]
+    def fetch(address):
+        calls.append(address)
+        return json.dumps({'base_resp':{'ret':0},'getalbum_resp':{'article_count':0,'continue_flag':0,'article_list':[]}})
+    result=run_batch('xiao',fetch,max_articles=0,max_pages=1,pause=0)
+    assert len(calls)==1 and '/mp/appmsgalbum?' in calls[0]
+    assert result['batch']['article_requests']==result['batch']['imported']==0
+
+
 def test_lease_prevents_concurrent_workers_and_stale_write_after_reclaim():
     source = configured('xiao')
     with leased(source) as (state, token):

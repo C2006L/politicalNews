@@ -264,6 +264,24 @@ def scope_reason(item: dict[str, Any], scope: str, today: date | None = None) ->
     return None
 
 
+def article_priority(item: dict[str, Any]) -> tuple[int, int, int]:
+    """Request important public releases first, without treating a title as proof.
+
+    Priority changes request order only. Identity, dates, body checks and final
+    content classification still run after download; verification still pauses.
+    """
+    title = str(item.get('title') or '')
+    teaching = bool(re.search(r'带背|背诵|真题|考点|打卡|课程', title))
+    release = not teaching and bool(re.search(
+        r'^权威发布|^习近平|^中共中央|^国务院|(?:印发|公布|审议通过).{0,30}(?:条例|意见|规划|方案|办法)', title))
+    tier = 0 if release else {'policy': 1, 'report': 2, 'analysis': 3}.get(str(item.get('category') or ''), 4)
+    try:
+        day = date.fromisoformat(str(item.get('day') or '')).toordinal()
+    except ValueError:
+        day = 0
+    return tier, -day, int(item.get('attempts') or 0)
+
+
 def verification(raw: str) -> bool:
     soup = BeautifulSoup(raw, 'html.parser')
     return not soup.select_one('#js_content') and bool(
@@ -332,8 +350,10 @@ def run_batch(key: str, fetch: Fetch | None = None, *, max_articles: int = 20, m
         # Article bodies can discover additional albums, so choose work again
         # after every committed page/article, rather than snapshotting a list.
         while not state['blocked']:
+            candidate = min((r for r in state['items'].values() if r['status'] in {'pending', 'retry', 'excluded'} and r.get('retry_at', 0) <= time.time() and (r.get('needs_body') or not scope_reason(r, scope))), key=article_priority, default=None)
+            article_first = candidate is not None and attempted < max_articles and article_priority(candidate)[0] <= 1
             album_pair = next(((a, r) for a, r in state['albums'].items() if r['status'] in {'pending', 'retry'} and r.get('retry_at', 0) <= time.time()), None)
-            if album_pair and pages < max_pages:
+            if album_pair and pages < max_pages and not article_first:
                 album, directory = album_pair
                 params = {'action': 'getalbum', '__biz': biz, 'album_id': album, 'count': '100'}
                 if directory['cursor']:
@@ -371,7 +391,6 @@ def run_batch(key: str, fetch: Fetch | None = None, *, max_articles: int = 20, m
                 except Exception as error:
                     fail(directory, error)
             elif attempted < max_articles:
-                candidate = next((r for r in state['items'].values() if r['status'] in {'pending', 'retry', 'excluded'} and r.get('retry_at', 0) <= time.time() and (r.get('needs_body') or not scope_reason(r, scope))), None)
                 if candidate is None:
                     break
                 attempted += 1
