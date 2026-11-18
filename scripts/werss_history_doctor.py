@@ -40,5 +40,6 @@ for mp_id in sys.argv[1:]:
             state.update(retry_after=time.time()+1800,auth_epoch=auth.stat().st_mtime_ns if auth.exists() else 0)
         elif result['list_code']==0:
             state['retry_after']=0
+            state['last_list_success_at']=int(time.time())
         store.save(mp_id, state, lease)
     print(json.dumps(result), flush=True)

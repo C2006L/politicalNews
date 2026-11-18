@@ -53,6 +53,16 @@ def group(name, stamp=None):
         'mpInfo': {'title': '政策 ' + name, 'time': stamp, 'originalId': name}}}]}
 
 
+def test_reinitializing_collector_preserves_qr_client_identity(adapter):
+    client=adapter.MpsWereadMP()
+    client._load_weread_auth()
+    client.get_token();before=client._request_headers(True)
+    client.get_token();after=client._request_headers(True)
+    assert before==after
+    assert after['User-Agent']==adapter.WEREAD_USER_AGENT
+    assert client.headers['User-Agent']==after['User-Agent']
+
+
 def client_for(module, rows, known=None):
     client = module.MpsWereadMP()
     known = known if known is not None else set()
@@ -252,6 +262,21 @@ def test_public_progress_reports_explicit_history_failure_without_ids_or_credent
     result = progress()['MP_WXS_1']
     assert result['status'] == 'authorization_or_limit' and result['discovered'] == 1
     assert 'private-id' not in json.dumps(result) and 'lease' not in result
+
+
+def test_progress_detects_new_authorization_without_exposing_credentials(adapter,monkeypatch):
+    from app.werss_history import progress
+    store=adapter.HistoryStore()
+    auth=store.path.parent/'wx.lic';auth.write_text('{}')
+    with store.claim('MP_WXS_1') as (state,lease):
+        state.update(list_code=-2012,auth_epoch=auth.stat().st_mtime_ns-1)
+        store.save('MP_WXS_1',state,lease)
+    deployed=store.path.parent/'political-news-history.sqlite3'
+    deployed.write_bytes(store.path.read_bytes())
+    monkeypatch.setenv('WERSS_DATABASE_PATH',str(store.path.parent/'learning.snapshot.db'))
+    result=progress()['MP_WXS_1']
+    assert result['authorization_changed']
+    assert 'auth_epoch' not in result and 'cookie' not in result
 
 
 def test_media_gap_does_not_block_later_policy_article_or_pretend_text_complete(adapter):

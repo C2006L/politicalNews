@@ -82,6 +82,8 @@ def eligible(entries: list[dict], observed: dict, attempts: dict, now: float) ->
         wait = 3600 if item.get('complete') else 300
         due = max(float(item.get('retry_after') or 0), float(item.get('checked_at') or 0) + wait,
                   float(attempts.get(identity, 0)) + wait)
+        if item.get('authorization_changed'):
+            due = 0  # The adapter atomically checks this new authorization once.
         if due <= now:
             ready.append(source)
     # Rotate fairly; the configured study direction never authorizes other ids.
@@ -89,7 +91,7 @@ def eligible(entries: list[dict], observed: dict, attempts: dict, now: float) ->
                                         observed.get(s['mp_id'], {}).get('checked_at') or 0, s['key']))
 
 
-def _claim(source: str, now: float) -> dict | None:
+def _claim(source: str, now: float, authorization_changed: bool = False) -> dict | None:
     """Serialize separate local app processes, including across service restarts."""
     with SessionLocal() as db:
         db.execute(text('BEGIN IMMEDIATE'))
@@ -98,7 +100,7 @@ def _claim(source: str, now: float) -> dict | None:
         if value.get('state') in {'running', 'awaiting_confirmation'}:
             return None
         attempts = value.get('attempts', {})
-        if now - float(attempts.get(source, 0)) < 300:
+        if not authorization_changed and now - float(attempts.get(source, 0)) < 300:
             return None
         attempts[source] = now
         receipt = dict(state='running', source=source, run_id=uuid.uuid4().hex,
@@ -131,7 +133,8 @@ def run() -> dict[str, Any]:
         candidates = eligible(sources(), observed, before.get('attempts', {}), time.time())
         if not candidates:
             return {'state': 'waiting'}
-        receipt = _claim(candidates[0]['mp_id'], time.time())
+        identity=candidates[0]['mp_id']
+        receipt = _claim(identity, time.time(), bool(observed.get(identity,{}).get('authorization_changed')))
         if not receipt:
             return {'state': 'busy'}
         command = [docker, 'exec', '-i', '-w', '/app', '-e',

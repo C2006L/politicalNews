@@ -42,6 +42,15 @@ def test_cooldown_verification_running_and_unregistered_sources_are_skipped():
     assert [s['mp_id'] for s in worker.eligible(entries,observed,{},1000)]==['MP_WXS_5']
 
 
+def test_new_authorization_rechecks_old_failure_without_bypassing_verification_or_running_source():
+    observed={'MP_WXS_1':{'retry_after':5000,'checked_at':999,'authorization_changed':True}}
+    assert worker.eligible([SOURCE],observed,{'MP_WXS_1':999},1000)==[SOURCE]
+    observed['MP_WXS_1']['status']='verification_required'
+    assert worker.eligible([SOURCE],observed,{},1000)==[]
+    observed['MP_WXS_1'].update(status='authorization_or_limit',running=True)
+    assert worker.eligible([SOURCE],observed,{},1000)==[]
+
+
 def test_recovers_from_saved_cursor_and_rotates_without_exposing_logs(runtime,monkeypatch):
     runtime['MP_WXS_1']={'offset':26,'retry_after':1,'status':'authorization_or_limit'}
     calls=[]

@@ -23,7 +23,9 @@ from core.wx.model.weread import MpsWeread
 
 
 WEREAD_WEB_BASE = "https://weread.qq.com"
-ADAPTER_VERSION = 'history-90-v2'
+ADAPTER_VERSION = 'history-90-v3'
+WEREAD_USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0')
 
 
 class HistoryStore:
@@ -201,6 +203,13 @@ def original_snapshot(raw, soup, root):
 
 
 class MpsWereadMP(MpsWeread):
+    def get_token(self):
+        super().get_token()
+        # Keep the same client identity as the pinned QR-login driver. The base
+        # resets a random desktop/mobile UA even within one collector instance.
+        self.user_agent = WEREAD_USER_AGENT
+        self.headers = {**getattr(self, 'headers', {}), 'User-Agent': self.user_agent}
+
     """WeRead-backed collector for existing ``MP_WXS_*`` feeds."""
 
     def _get_feed_update_time(self, mp_id: str) -> int:
@@ -239,8 +248,8 @@ class MpsWereadMP(MpsWeread):
             "Referer": "https://weread.qq.com/",
         }
         if include_ticket and self._weread_ticket:
-            # 新版微信读书已弃用 x-wr-ticket，仅需有效 Cookie 即可拉取文章列表；
-            # 保留旧逻辑以便兼容旧版微信读书。无 ticket 时不拦截请求。
+            # List access may require a separate web-reader ticket. Preserve a
+            # legitimately configured ticket; cookie validity alone proves less.
             headers["x-wr-ticket"] = self._weread_ticket
         return headers
 

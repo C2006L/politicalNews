@@ -46,6 +46,11 @@ def progress() -> dict[str, dict[str, Any]]:
                 entries[mp_id].update(discovered=len(item.get('discovered_ids', [])),
                                       pending_bodies=len(item.get('body_pending', [])),
                                       running=bool(lease and expires and expires > time.time()))
+                auth_path = path.parent / 'wx.lic'
+                entries[mp_id]['authorization_changed'] = bool(
+                    item.get('list_code') in (-2012, -2010, -2041, 499)
+                    and item.get('auth_epoch') is not None and auth_path.is_file()
+                    and auth_path.stat().st_mtime_ns != item['auth_epoch'])
                 if item.get('list_code') == -2012:
                     entries[mp_id]['status'] = 'authorization_or_limit'
     except (OSError, sqlite3.Error, ValueError, TypeError, AttributeError):
