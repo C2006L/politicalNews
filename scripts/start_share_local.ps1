@@ -5,6 +5,7 @@ $runtime = Join-Path $workspaceRoot 'preview'
 $stateFile = Join-Path $runtime 'share-state.json'
 $pythonPath = Join-Path $workspaceRoot '.conda\python.exe'
 $tunnelPath = Join-Path $workspaceRoot 'tools\cloudflared.exe'
+$healthPath = '/static/study.css'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
 if (-not (Test-Path -LiteralPath $tunnelPath)) { throw 'Missing cloudflared.exe in workspace tools directory.' }
 if (Test-Path -LiteralPath $stateFile) {
@@ -17,10 +18,10 @@ if (Test-Path -LiteralPath $stateFile) {
     }
     throw 'A previous share record exists. Run stop_share_local.ps1 first, then start again.'
 }
-Invoke-WebRequest 'http://127.0.0.1:8004/today' -UseBasicParsing -TimeoutSec 15 | Out-Null
+Invoke-WebRequest ('http://127.0.0.1:8004' + $healthPath) -UseBasicParsing -TimeoutSec 15 | Out-Null
 $gateway = $null
 try {
-    Invoke-WebRequest 'http://127.0.0.1:8017/today' -UseBasicParsing -TimeoutSec 5 | Out-Null
+    Invoke-WebRequest ('http://127.0.0.1:8017' + $healthPath) -UseBasicParsing -TimeoutSec 5 | Out-Null
     throw 'Port 8017 is already occupied. Stop the previous share before starting another.'
 } catch {
     if ($_.Exception.Message -like 'Port 8017*') { throw }
@@ -29,7 +30,7 @@ $gateway = Start-Process -FilePath $pythonPath -ArgumentList '-m','uvicorn','app
 try {
     $ready = $false
     for ($i=0; $i -lt 15; $i++) {
-        try { Invoke-WebRequest 'http://127.0.0.1:8017/today' -UseBasicParsing -TimeoutSec 2 | Out-Null; $ready=$true; break } catch { Start-Sleep -Milliseconds 500 }
+        try { Invoke-WebRequest ('http://127.0.0.1:8017' + $healthPath) -UseBasicParsing -TimeoutSec 2 | Out-Null; $ready=$true; break } catch { Start-Sleep -Milliseconds 500 }
     }
     if (-not $ready) { throw 'Read-only sharing gateway did not start.' }
     $log = Join-Path $runtime 'share-tunnel.err.log'
