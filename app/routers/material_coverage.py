@@ -40,6 +40,20 @@ def coverage_page() -> HTMLResponse:
         body+=f'<p>页面元数据日期 {row["dated"]} 篇 · 近90天收录 {row["recent_90"]} 篇 · 其中时政初筛候选 {row["recent_affairs"]} 篇 · 日期待核实 {row["date_unknown"]} 篇</p>'
         if row['original_updates_pending']:
             body+=f'<p>上游片段有变化、原页待复查 {row["original_updates_pending"]} 篇；当前保留已存原页，不把片段变化当成原文已更新。</p>'
+        collector=row.get('collector')
+        if collector:
+            collector_states={'authorization_required':'历史列表授权待恢复','authorization_or_limit':'历史通道受限，授权或配额原因待核实','access_restricted':'历史列表访问受限',
+                              'history_partial':'历史列表补采进行中','window_scanned':'已扫描接口返回的本期列表',
+                              'incremental_checked':'已检查最新列表','history_error':'历史补采未完成',
+                              'cursor_reset':'分页顺序有变化，已回到起点复核','list_ready':'历史列表可访问，范围与正文另计'}
+            label=collector_states.get(collector['status'],'等待历史列表验证')
+            body+=f'<p>WeRSS主通道：{label} · 已发现 {collector["discovered"]} 条列表文章 · 正文待补 {collector["pending_bodies"]} 篇</p>'
+            if collector.get('latest_fallback'):
+                body+='<p>本批仅最新稿兜底可用，历史列表未完成；最新文章抓取成功不代表近90天补齐。</p>'
+            if collector.get('retry_after'):
+                body+='<p>采集已退避暂停并保存断点；不会仅凭同一个错误码要求反复扫码。</p>'
+            if collector.get('complete'):
+                body+='<p>这里只核对接口实际返回的列表范围，仍不等于已确认全号90天发布总量。</p>'
         history=row.get('history',{})
         if history.get('initialized'):
             body+=f'<p>持续补采清单：发现 {history["discovered"]} 条独立链接 · 其中正文可读 {history["body_available"]} 篇 · 近90天时政待补 {history["pending"]} 条 · 待重试 {history["retry"]} 条 · 需人工检查 {history["failed"]} 条</p>'

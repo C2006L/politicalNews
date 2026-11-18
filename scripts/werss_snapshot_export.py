@@ -8,7 +8,9 @@ import tempfile
 import time
 
 
-def export_snapshot(source: Path, destination: Path) -> None:
+def export_snapshot(source: Path, destination: Path, timeout_seconds: float = 120) -> None:
+    if not 1 <= timeout_seconds <= 300:
+        raise ValueError('Snapshot time budget must be 1..300 seconds')
     source = source.resolve(strict=True)
     destination = destination.resolve()
     if source == destination:
@@ -18,7 +20,7 @@ def export_snapshot(source: Path, destination: Path) -> None:
     temp_path = Path(temporary)
     started = time.monotonic()
     def progress(status: int, remaining: int, total: int) -> None:
-        if time.monotonic() - started > 20:
+        if time.monotonic() - started > timeout_seconds:
             raise TimeoutError('Snapshot export exceeded time budget')
     try:
         with closing(sqlite3.connect(source.as_uri() + '?mode=ro', uri=True, timeout=5)) as src:
@@ -41,12 +43,13 @@ if __name__ == '__main__':
     parser.add_argument('source', type=Path)
     parser.add_argument('destination', type=Path)
     parser.add_argument('--interval', type=int, default=60)
+    parser.add_argument('--timeout', type=float, default=120)
     args = parser.parse_args()
     if args.interval < 30:
         parser.error('interval must be at least 30 seconds')
     while True:
         try:
-            export_snapshot(args.source, args.destination)
+            export_snapshot(args.source, args.destination, args.timeout)
             print('Snapshot exported.', flush=True)
         except Exception:
             print('Snapshot export failed; previous snapshot retained.', flush=True)

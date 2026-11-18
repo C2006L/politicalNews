@@ -42,3 +42,17 @@ def test_export_failure_keeps_previous_snapshot_and_never_overwrites_source(tmp_
     assert not list(tmp_path.glob('snapshot-*'))
     with pytest.raises(ValueError):
         export_snapshot(source, source)
+
+
+def test_larger_snapshot_budget_and_timeout_preserve_previous_copy(tmp_path,monkeypatch):
+    source,target=tmp_path/'live.db',tmp_path/'snapshot.db'
+    with closing(sqlite3.connect(source)) as db,db:
+        db.execute('CREATE TABLE articles(id)')
+    ticks=iter([0,30])
+    monkeypatch.setattr('scripts.werss_snapshot_export.time.monotonic',lambda:next(ticks))
+    export_snapshot(source,target)  # A 30-second copy is within the new default.
+    previous=target.read_bytes()
+    ticks=iter([0,30])
+    with pytest.raises(TimeoutError):export_snapshot(source,target,timeout_seconds=20)
+    assert target.read_bytes()==previous
+    assert not list(tmp_path.glob('snapshot-*'))

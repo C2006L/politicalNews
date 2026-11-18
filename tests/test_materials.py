@@ -93,3 +93,45 @@ def test_learning_views_escape_content_and_handle_empty(client):
     assert '&lt;script&gt;' in client.get('/learning').text
     assert '<script>alert' not in client.get('/learning/1').text
     assert client.get('/api/learning').json()['total'] == 1
+
+
+def test_bridge_preserves_raw_original_instead_of_werss_converted_html(tmp_path, monkeypatch):
+    from app.models import MaterialRevision
+    from app.material_originals import observe,read
+    path=tmp_path/'werss.db'
+    raw='<html><script>var ct="1778580000";</script><div id="js_content"><p>'+'政策条件、适用范围与时间必须完整保留。'*15+'</p></div></html>'
+    converted='<p>'+'上游转换后的文字片段。'*20+'</p>'
+    with closing(sqlite3.connect(path)) as db,db:
+        db.execute('CREATE TABLE articles(id,mp_id,title,url,content_html,content,has_content,create_time)')
+        db.execute('INSERT INTO articles VALUES(?,?,?,?,?,?,1,1)',
+                   ('original','MP_WXS_3243013434','原页','https://mp.weixin.qq.com/s/raw',converted,raw))
+    monkeypatch.setenv('WERSS_DATABASE_PATH',str(path))
+    assert sync_materials()['added']==1
+    with SessionLocal() as db:
+        revision=db.query(MaterialRevision).one()
+        assert revision.source_html==raw
+        assert '上游转换' not in ''.join(row['text'] for row in revision.snapshot['payload']['evidence'])
+        material_id=revision.material_id
+        observe(db,material_id,'changed-upstream-fragment',False)
+        db.commit()
+    changed=raw.replace('政策条件、适用范围与时间必须完整保留。','政策适用范围已更新，保留原文的限定与时间。')
+    with closing(sqlite3.connect(path)) as source,source:
+        source.execute('UPDATE articles SET content=?',(changed,))
+    assert sync_materials()['updated']==1
+    with SessionLocal() as db:
+        assert read(db)[str(material_id)]['pending_fragment'] is None
+
+
+def test_bridge_does_not_mistake_script_literal_for_original_body(tmp_path, monkeypatch):
+    from app.models import MaterialRevision
+    path=tmp_path/'werss.db'
+    converted='<p>'+'已经取得的正文片段应继续保留。'*15+'</p>'
+    with closing(sqlite3.connect(path)) as db,db:
+        db.execute('CREATE TABLE articles(id,mp_id,title,url,content_html,content,has_content,create_time)')
+        db.execute('INSERT INTO articles VALUES(?,?,?,?,?,?,1,1)',
+                   ('fragment','MP_WXS_3243013434','片段','https://mp.weixin.qq.com/s/fragment',converted,
+                    '<script>var js_content="placeholder";</script>'))
+    monkeypatch.setenv('WERSS_DATABASE_PATH',str(path))
+    assert sync_materials()['added']==1
+    with SessionLocal() as db:
+        assert db.query(MaterialRevision).one().source_html==converted

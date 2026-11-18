@@ -12,10 +12,12 @@ from app.material_dates import page_date,recent
 from app.editorial import select_document,decision_map
 from app.material_history import read_state, summarize
 from app.material_originals import read as read_original_updates
+from app.werss_history import progress as collector_progress
 
 REPORT_ROOT=Path(__file__).resolve().parents[2]/'preview'
 
 def coverage() -> dict[str, Any]:
+    collector=collector_progress()
     path=REPORT_ROOT/'public-coverage-20261117'/'report.json'
     try:report=json.loads(path.read_text(encoding='utf-8'))
     except (OSError,ValueError):report={}
@@ -54,6 +56,7 @@ def coverage() -> dict[str, Any]:
         history=summarize(read_state(source['key']))
         entries.append({'key':source['key'],'name':source['name'],'enabled':source['enabled'],
                         'history':history,
+                        'collector':collector.get(source['mp_id']),
                         'original_updates_pending':pending_originals[source['name']],
                         'imported':counts[source['name']],'account_total':None,
                         'dated':dated[source['name']], 'recent_90':recent_counts[source['name']],

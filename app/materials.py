@@ -21,7 +21,7 @@ from app.models import LearningMaterial, MaterialRevision, AppState
 from app.revisions import append_revision
 from app.material_sources import accounts
 from app.material_status import now_iso, write_status, parse_scan
-from app.material_originals import observe
+from app.material_originals import observe, accept
 
 ACCOUNTS = {"MP_WXS_3243013434": "肖秀荣教授", "MP_WXS_3080503014": "考研政治徐涛"}
 EXTRACTOR_VERSION = "rules-3"
@@ -138,7 +138,7 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
     if not active_accounts:
         return result
     placeholders = ','.join('?' for _ in active_accounts)
-    with SessionLocal() as db:
+    with SessionLocal() as db, closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=5)) as source:
         checkpoint = db.get(AppState, SCAN_KEY)
         scan = parse_scan(checkpoint.value if checkpoint else None)
         source_key = hashlib.sha256(str(path).encode()).hexdigest()
@@ -148,30 +148,36 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
         after = scan.get('after')
         # Keyset traversal is independent of source timestamps. New/edited rows
         # behind the cursor are revisited next cycle, not permanently excluded.
-        with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=5)) as source:
-            source.execute('BEGIN')
-            def batch(cursor: str | None) -> list[Any]:
-                return source.execute(
-                    'SELECT CAST(id AS TEXT),mp_id,title,url,content_html FROM articles '
-                    f'WHERE mp_id IN ({placeholders}) AND has_content=1 '
-                    'AND (? IS NULL OR CAST(id AS TEXT)>?) '
-                    'ORDER BY CAST(id AS TEXT) COLLATE BINARY LIMIT ?',
-                    (*active_accounts, cursor, cursor, BATCH_SIZE + 1)).fetchall()
-            peek = (batch(after) if only_source_id is None else source.execute(
-                'SELECT CAST(id AS TEXT),mp_id,title,url,content_html FROM articles '
-                f'WHERE mp_id IN ({placeholders}) AND has_content=1 AND CAST(id AS TEXT)=?',
-                (*active_accounts, only_source_id)).fetchall())
-            if only_source_id is None and after is not None and not peek:
-                scan = {'source_key': source_key, 'account_key': account_key}
-                peek = batch(None)
-            rows = peek[:BATCH_SIZE]
-            last = rows[-1][0] if rows else None
-            if len(peek) > BATCH_SIZE:
-                result['remaining'] = source.execute(
-                    f'SELECT COUNT(*) FROM articles WHERE mp_id IN ({placeholders}) AND has_content=1 AND CAST(id AS TEXT)>?',
-                    (*active_accounts, last)).fetchone()[0]
+        source.execute('BEGIN')
+        columns={row[1] for row in source.execute('PRAGMA table_info(articles)')}
+        original_column='content' if 'content' in columns else 'NULL'
+        def batch(cursor: str | None) -> list[Any]:
+            return source.execute(
+                'SELECT CAST(id AS TEXT),mp_id,title,url FROM articles '
+                f'WHERE mp_id IN ({placeholders}) AND has_content=1 '
+                'AND (? IS NULL OR CAST(id AS TEXT)>?) '
+                'ORDER BY CAST(id AS TEXT) COLLATE BINARY LIMIT ?',
+                (*active_accounts, cursor, cursor, BATCH_SIZE + 1)).fetchall()
+        peek = (batch(after) if only_source_id is None else source.execute(
+            'SELECT CAST(id AS TEXT),mp_id,title,url FROM articles '
+            f'WHERE mp_id IN ({placeholders}) AND has_content=1 AND CAST(id AS TEXT)=?',
+            (*active_accounts, only_source_id)).fetchall())
+        if only_source_id is None and after is not None and not peek:
+            scan = {'source_key': source_key, 'account_key': account_key}
+            peek = batch(None)
+        rows = peek[:BATCH_SIZE]
+        last = rows[-1][0] if rows else None
+        if len(peek) > BATCH_SIZE:
+            result['remaining'] = source.execute(
+                f'SELECT COUNT(*) FROM articles WHERE mp_id IN ({placeholders}) AND has_content=1 AND CAST(id AS TEXT)>?',
+                (*active_accounts, last)).fetchone()[0]
         result['scanned'] = len(rows)
-        for source_id, account_id, title, url, html in rows:
+        for source_id, account_id, title, url in rows:
+            html, original = source.execute(f'SELECT content_html,{original_column} FROM articles WHERE CAST(id AS TEXT)=?', (source_id,)).fetchone()
+            if isinstance(original,str) and 'js_content' in original:
+                root=BeautifulSoup(original,'html.parser').select_one('#js_content')
+                if root is not None and len(root.get_text(' ',strip=True))>=100:
+                    html=original
             if not source_id or not isinstance(title, str) or not isinstance(url, str) or not isinstance(html, str):
                 result["rejected"] += 1
                 result["invalid_record"] += 1
@@ -220,6 +226,8 @@ def _import_materials(only_source_id: str | None = None) -> dict[str, int]:
             material.fingerprint, material.payload = fingerprint, payload
             material.imported_at = datetime.now(timezone.utc).replace(tzinfo=None)
             append_revision(db, material, html)
+            if 'js_content' in html:
+                accept(db, material.id)
         if only_source_id is None:
             scan['cycle_scanned'] = scan.get('cycle_scanned', 0) + result['scanned']
             scan['cycle_rejected'] = scan.get('cycle_rejected', 0) + result['rejected']
