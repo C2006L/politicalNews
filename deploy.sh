@@ -1,8 +1,10 @@
 #!/bin/bash
+# 可选完整后端部署，非当前静态阅读站；静态部署请参阅 docs/static-reading.md。
 # 时政系统部署脚本
 # 适用于阿里云轻量服务器
 
 set -e
+PUBLIC_HOST="${PUBLIC_HOST:-localhost}"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -98,7 +100,7 @@ deploy_app() {
         git pull origin main
     else
         log_info "克隆代码..."
-        git clone https://github.com/WangBaoHe333/political-news.git .
+        git clone https://github.com/C2006L/politicalNews.git .
     fi
 
     # 检查环境变量文件
@@ -149,7 +151,7 @@ deploy_prod() {
         git pull origin main
     else
         log_info "克隆代码..."
-        git clone https://github.com/WangBaoHe333/political-news.git .
+        git clone https://github.com/C2006L/politicalNews.git .
     fi
 
     # 检查生产环境变量文件
@@ -168,7 +170,7 @@ deploy_prod() {
         openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout ssl/privkey.pem \
             -out ssl/fullchain.pem \
-            -subj "/C=CN/ST=Beijing/L=Beijing/O=Political News/CN=39.104.27.129" 2>/dev/null || {
+            -subj "/C=CN/ST=Beijing/L=Beijing/O=Political News/CN=${PUBLIC_HOST}" 2>/dev/null || {
             log_error "生成自签名证书失败"
             exit 1
         }
@@ -191,9 +193,9 @@ deploy_prod() {
     # 检查服务状态
     if docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps | grep -q "Up"; then
         log_info "生产服务启动成功！"
-        log_info "应用地址: https://39.104.27.129"
-        log_info "HTTP重定向地址: http://39.104.27.129 (自动跳转HTTPS)"
-        log_info "API文档: https://39.104.27.129/docs"
+        log_info "应用地址: https://${PUBLIC_HOST}"
+        log_info "HTTP重定向地址: http://${PUBLIC_HOST} (自动跳转HTTPS)"
+        log_info "API文档: https://${PUBLIC_HOST}/docs"
 
         # 测试HTTPS访问
         log_info "测试HTTPS连接..."

@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
+# 可选完整后端部署，非当前静态阅读站；静态部署请参阅 docs/static-reading.md。
 # 在服务器上首次或重复部署「默认栈」：SQLite + 单应用容器（与 CI 一致）。
 # 用法（在服务器上）：
-#   curl -fsSL https://raw.githubusercontent.com/WangBaoHe333/political-news/main/scripts/server-bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/C2006L/politicalNews/main/scripts/server-bootstrap.sh | bash
 # 或本机已能 SSH 时：
-#   ssh user@39.104.27.129 'bash -s' < scripts/server-bootstrap.sh
+#   ssh user@YOUR_SERVER 'bash -s' < scripts/server-bootstrap.sh
 #
 # 需要：已安装 Docker 与 Compose v2（docker compose）或 docker-compose；当前用户在 docker 组或有 sudo。
 
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/political-news}"
-REPO_URL="${REPO_URL:-https://github.com/WangBaoHe333/political-news.git}"
+REPO_URL="${REPO_URL:-https://github.com/C2006L/politicalNews.git}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "错误：未找到 docker，请先安装 Docker。" >&2
@@ -59,7 +60,7 @@ if [[ ! -f ssl/fullchain.pem ]] || [[ ! -f ssl/privkey.pem ]]; then
   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout ssl/privkey.pem \
     -out ssl/fullchain.pem \
-    -subj "/CN=39.104.27.129" 2>/dev/null
+    -subj "/CN=${PUBLIC_HOST:-localhost}" 2>/dev/null
 fi
 
 echo "==> 构建并启动容器"

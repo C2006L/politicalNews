@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 可选完整后端部署，非当前静态阅读站；静态部署请参阅 docs/static-reading.md。
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/political-news}"
@@ -44,7 +45,7 @@ SCHEDULED_SYNC_TIMEZONE=Asia/Shanghai
 EXPOSE_API_DOCS=0
 SYNC_ADMIN_TOKEN=change_this_token
 HTTP_VERIFY_TLS=1
-CORS_ORIGINS=http://39.104.27.129:8000
+CORS_ORIGINS=http://localhost:8000
 EOF
 fi
 

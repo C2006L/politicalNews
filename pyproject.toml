@@ -5,11 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "political-news"
 version = "1.0.0"
-description = "A political news aggregation and analysis system for civil service exam preparation"
+description = "时政自习室：面向考研政治与公考的时政整理、本机采集和静态阅读工具"
 readme = "README.md"
 authors = [
     { name = "Wang Baohe", email = "wangbaohe333@gmail.com" }
 ]
+maintainers = [{ name = "C2006L" }]
 license = { text = "MIT" }
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -50,10 +51,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/WangBaoHe333/political-news"
-Documentation = "https://github.com/WangBaoHe333/political-news#readme"
-Issues = "https://github.com/WangBaoHe333/political-news/issues"
-Source = "https://github.com/WangBaoHe333/political-news"
+Homepage = "https://github.com/C2006L/politicalNews"
+Documentation = "https://github.com/C2006L/politicalNews#readme"
+Issues = "https://github.com/C2006L/politicalNews/issues"
+Source = "https://github.com/C2006L/politicalNews"
 
 [tool.black]
 line-length = 88
